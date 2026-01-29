@@ -12,7 +12,7 @@ from databases.databases import get_db, UserModel, ChatModel, ChatMember, Messag
 from auth.validation import get_current_user
 
 
-messages_router = APIRouter(prefix="/messages")
+messages_router = APIRouter(prefix="/messages", tags=["messages"])
 
 
 class PatchMessageSchema(BaseModel):

@@ -7,7 +7,7 @@ from sqlalchemy import select, update, delete
 from typing import List, Set
 from auth.validation import get_current_user
 
-chats_router = APIRouter(prefix="/chats")
+chats_router = APIRouter(prefix="/chats", tags=["chats"])
 
 
 class SetChatSchema(BaseModel):

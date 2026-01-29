@@ -4,10 +4,10 @@ from fastapi import HTTPException, status
 
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete, update
+from sqlalchemy import select, delete, update, or_
 from auth.validation import get_current_user
-from databases.databases import get_db, UserModel
-users_router = APIRouter(prefix="/users")
+from databases.databases import get_db, UserModel, UserFriends
+users_router = APIRouter(prefix="/users", tags=["users"])
 
 
 class PatchUserProfileSchema(BaseModel):
@@ -77,3 +77,4 @@ async def get_user(user_id: int = Path(ge=1), requester_id: int = Depends(get_cu
         "lastname": data.lastname,
         "bio": data.bio
         }
+
