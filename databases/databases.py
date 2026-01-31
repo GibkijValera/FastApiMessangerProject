@@ -17,6 +17,20 @@ class Base(DeclarativeBase):
     pass
 
 
+from sqlalchemy import ForeignKey, String
+from sqlalchemy.orm import Mapped, mapped_column
+
+
+class AttachmentModel(Base):
+    __tablename__ = "attachments"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    message_id: Mapped[int] = mapped_column(ForeignKey("messages.id", ondelete="CASCADE"))
+    filename: Mapped[str] = mapped_column(String(255))
+    filepath: Mapped[str] = mapped_column(String(512))
+    content_type: Mapped[str] = mapped_column(String(100))
+    size: Mapped[int]
+
+
 class MessageModel(Base):
     __tablename__ = "messages"
     id: Mapped[int] = mapped_column(primary_key=True)

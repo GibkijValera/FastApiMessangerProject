@@ -1,9 +1,9 @@
 import sys
-from pathlib import Path
+from pathlib import Path as PathLib
 from logging.config import fileConfig
 from sqlalchemy import engine_from_config, pool
 from alembic import context
-sys.path.insert(0, str(Path(__file__).parents[1]))
+sys.path.insert(0, str(PathLib(__file__).parents[1]))
 from databases.databases import Base
 config = context.config
 
