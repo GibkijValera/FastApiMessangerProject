@@ -1,7 +1,7 @@
 import uvicorn
 from fastapi import FastAPI
 
-from messages.messages import messages_router
+from chats.messages.messages import messages_router
 from users.users import users_router
 from chats.chats import chats_router
 from auth.auth import auth_router

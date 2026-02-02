@@ -6,9 +6,9 @@ from databases.databases import get_db, UserModel, ChatModel, ChatMember
 from sqlalchemy import select, update, delete
 from typing import List, Set
 from auth.validation import get_current_user
-
+from chats.messages.messages import messages_router
 chats_router = APIRouter(prefix="/chats", tags=["chats"])
-
+chats_router.include_router(messages_router)
 
 class SetChatSchema(BaseModel):
     members_id: Set[int] = Field(min_length=2, max_length=15)
@@ -50,12 +50,12 @@ async def create_chat(schema: SetChatSchema, owner_id: int = Depends(get_current
 @chats_router.get("")
 async def load_all_chats(user_id: int = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     result = await db.execute(
-        select(ChatMember.chat_id, ChatModel.name)
+        select(ChatMember.chat_id, ChatModel.name, ChatModel.is_private)
         .join(ChatModel, ChatMember.chat_id == ChatModel.id)
         .where(ChatMember.user_id == user_id)
     )
     loaded_chats = [
-        {"chat_id": row[0], "chat_name": row[1]}
+        {"chat_id": row[0], "chat_name": row[1], "is_private": row[2]}
         for row in result.all()
     ]
     return {

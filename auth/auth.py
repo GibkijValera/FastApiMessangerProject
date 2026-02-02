@@ -15,7 +15,7 @@ class RegisterSchema(BaseModel):
     name: str = Field(min_length=1, max_length=32)
     lastname: str = Field(min_length=1, max_length=32)
     pwd: str = Field(min_length=8, max_length=32)
-    bio: None | str = Field(max_length=256)
+    bio: None | str = Field(max_length=255)
 
 
 @auth_router.post("/register")

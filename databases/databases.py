@@ -53,8 +53,8 @@ class ChatMember(Base):
 class ChatModel(Base):
     __tablename__ = "chats"
     id: Mapped[int] = mapped_column(primary_key=True)
-    is_private: Mapped[bool] = True
-    name: Mapped[str] = None
+    is_private: Mapped[bool] = mapped_column(default=True)
+    name: Mapped[str] = mapped_column(nullable=True)
     status: Mapped[str] = mapped_column(default="opened")
 
 
