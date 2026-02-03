@@ -10,6 +10,7 @@ from chats.messages.messages import messages_router
 chats_router = APIRouter(prefix="/chats", tags=["chats"])
 chats_router.include_router(messages_router)
 
+
 class SetChatSchema(BaseModel):
     members_id: Set[int] = Field(min_length=2, max_length=15)
     name: None | str = Field(min_length=1, max_length=64)
