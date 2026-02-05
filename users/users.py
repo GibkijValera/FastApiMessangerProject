@@ -1,16 +1,17 @@
 import uuid
 from typing import Annotated, List
-
+from fastapi.responses import FileResponse
 from fastapi import APIRouter, Depends, Path, UploadFile, File, Form
 from fastapi import HTTPException, status
-
+from media.MediaInfo import validate_file_type
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete, update, or_
+from sqlalchemy import select, delete, update
 from sqlalchemy.orm import aliased
-from chats.messages.attachments import MAX_FILE_SIZE, MAX_TOTAL_SIZE, ALLOWED_CONTENT_TYPES
+from media.MediaInfo import MAX_FILE_SIZE, MAX_TOTAL_SIZE, ALLOWED_CONTENT_TYPES, get_ext, MEDIA_ROOT
+from media.pictures import ALLOWED_PICTURE_TYPE, default_avatar, default_avatar_name
 from auth.validation import get_current_user
-from databases.databases import get_db, UserModel, UserFriends, ChatMember, ChatModel, MessageModel, AttachmentModel
+from databases.databases import get_db, UserModel, ChatMember, ChatModel, MessageModel, AttachmentModel, PictureModel
 from pathlib import Path as PathLib
 users_router = APIRouter(prefix="/users", tags=["users"])
 
@@ -98,6 +99,7 @@ async def lazy_creation_chat(text: Annotated[str, Form()],  files: List[UploadFi
     await db.commit()
     return {"ok": True, "chat_id": new_chat.id, "message_id": new_message.id, "uploaded_files": attachment_urls}
 
+
 class PatchUserProfileSchema(BaseModel):
     name: str = Field(min_length=1, max_length=32)
     lastname: str = Field(min_length=1, max_length=32)
@@ -147,6 +149,142 @@ async def get_user_profile(user_id: int = Depends(get_current_user), db: AsyncSe
         "bio": data.bio,
         "email": data.email
     }
+
+
+@users_router.delete("/profile/pictures/avatar")
+async def delete_avatar(user_id: int = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(delete(PictureModel).where(PictureModel.owner_id == user_id, PictureModel.placement == "avatar"))
+    if result.rowcount == 0:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Nothing found or you have no permission"
+        )
+    await db.commit()
+    return {"ok": True}
+
+@users_router.post("/profile/pictures/wall")
+async def upload_wall_photo(file: UploadFile = File(default=None), user_id: int = Depends(get_current_user),
+                            db: AsyncSession = Depends(get_db)):
+    filetype = await validate_file_type(file)
+    if filetype != ALLOWED_PICTURE_TYPE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"File should be {ALLOWED_PICTURE_TYPE} format"
+        )
+    ext = get_ext(filetype)
+    unique_filename = f"{uuid.uuid4().hex}.{ext}"
+    filepath = f"pictures/{unique_filename}"
+    full_path = PathLib("media") / filepath
+    with open(full_path, "wb") as f:
+        f.write(await file.read())
+    picture = PictureModel(
+        filename=file.filename or unique_filename,
+        filepath=filepath,
+        size=file.size,
+        owner_id=user_id,
+        placement="wall"
+    )
+    db.add(picture)
+    await db.commit()
+    return {"ok": True}
+
+
+@users_router.get("/{user2_id}/pictures/wall")
+async def get_wall_photos(user2_id: int = Path(ge=1), user_id: int = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    result = await get_pictures(user2_id, db, "wall")
+    return {
+        "ok": True,
+        "URLS": [file.filepath for file in result]
+    }
+
+
+@users_router.get("/profile/pictures/wall")
+async def get_profile_wall_photos(user_id: int = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    result = await get_pictures(user_id, db, "wall")
+    return {
+        "ok": True,
+        "URLS": [file.filepath for file in result]
+    }
+
+
+async def get_pictures(user_id, db: AsyncSession, placement: str):
+    result = await db.execute(select(PictureModel).where(PictureModel.owner_id == user_id, PictureModel.placement == placement))
+    pictures = result.scalars().all()
+    return pictures
+
+
+@users_router.get("/profile/pictures/avatar")
+async def get_profile_avatar(user_id: int = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    result = await get_pictures(user_id, db, "avatar")
+    avatar = next(iter(result), None)
+    if avatar:
+        return FileResponse(
+            path=PathLib(MEDIA_ROOT) / avatar.filepath,
+            media_type=ALLOWED_PICTURE_TYPE,
+            headers={
+                "Content-Disposition": f'inline; filename="{avatar.filename}"'
+            }
+        )
+    else:
+        return FileResponse(
+            path=PathLib(MEDIA_ROOT) / default_avatar,
+            media_type=ALLOWED_PICTURE_TYPE,
+            headers={
+                "Content-Disposition": f'inline; filename="{default_avatar_name}"'
+            }
+        )
+
+
+@users_router.get("/{user2_id}/pictures/avatar")
+async def get_avatar(user2_id: int = Path(ge=1), user_id: int = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    result = await get_pictures(user2_id, db, "avatar")
+    avatar = next(iter(result), None)
+    if avatar:
+        return FileResponse(
+            path=PathLib(MEDIA_ROOT) / avatar.filepath,
+            media_type=ALLOWED_PICTURE_TYPE,
+            headers={
+                "Content-Disposition": f'inline; filename="{avatar.filename}"'
+            }
+        )
+    else:
+        return FileResponse(
+            path=PathLib(MEDIA_ROOT) / default_avatar,
+            media_type=ALLOWED_PICTURE_TYPE,
+            headers={
+                "Content-Disposition": f'inline; filename="{default_avatar_name}"'
+            }
+        )
+
+
+@users_router.post("/{user2_id}/pictures/avatar")
+async def upload_avatar(file: UploadFile = File(default=None), user2_id: int = Path(ge=1), user_id: int = Depends(get_current_user),
+                        db: AsyncSession = Depends(get_db)):
+    filetype = await validate_file_type(file)
+    if filetype != ALLOWED_PICTURE_TYPE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"File should be {ALLOWED_PICTURE_TYPE} format"
+        )
+    await db.execute(update(PictureModel)
+                     .where(PictureModel.owner_id == user2_id, PictureModel.placement == "avatar")
+                     .values(placement="wall"))
+    ext = get_ext(filetype)
+    unique_filename = f"{uuid.uuid4().hex}.{ext}"
+    filepath = f"pictures/{unique_filename}"
+    full_path = PathLib("media") / filepath
+    with open(full_path, "wb") as f:
+        f.write(await file.read())
+    picture = PictureModel(
+        filename=file.filename or unique_filename,
+        filepath=filepath,
+        size=file.size,
+        owner_id=user2_id,
+        placement="avatar"
+    )
+    db.add(picture)
+    await db.commit()
+    return {"ok": True}
 
 
 @users_router.get("/{user_id}")

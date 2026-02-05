@@ -31,6 +31,16 @@ class AttachmentModel(Base):
     size: Mapped[int]
 
 
+class PictureModel(Base):
+    __tablename__ = "pictures"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    filename: Mapped[str] = mapped_column(String(255))
+    filepath: Mapped[str] = mapped_column(String(512))
+    size: Mapped[int]
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    placement: Mapped[str] = mapped_column(default="avatar")
+    date: Mapped[datetime] = mapped_column(default=datetime.now(timezone.utc))
+
 class MessageModel(Base):
     __tablename__ = "messages"
     id: Mapped[int] = mapped_column(primary_key=True)

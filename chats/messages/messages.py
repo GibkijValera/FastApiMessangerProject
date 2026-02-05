@@ -1,19 +1,18 @@
 import uuid
 from datetime import datetime
 from typing import Optional
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse
 from fastapi import APIRouter, Depends, Path, UploadFile, File, Form, Query
 from fastapi import HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, delete, update
-from sqlalchemy.orm import aliased
-from databases.databases import get_db, UserModel, ChatModel, ChatMember, MessageModel, AttachmentModel
+from databases.databases import get_db, ChatModel, ChatMember, MessageModel, AttachmentModel
 from auth.validation import get_current_user
 from pathlib import Path as PathLib
 messages_router = APIRouter(prefix="/{chat_id}/messages", tags=["messages"])
-from chats.messages.attachments import MAX_FILE_SIZE, MAX_TOTAL_SIZE, ALLOWED_CONTENT_TYPES
-from chats.messages.attachments import MEDIA_ROOT
+from media.MediaInfo import MAX_FILE_SIZE, MAX_TOTAL_SIZE, ALLOWED_CONTENT_TYPES
+from media.MediaInfo import MEDIA_ROOT
 
 class PatchMessageSchema(BaseModel):
     text: str = Field(min_length=1)
@@ -202,7 +201,7 @@ async def send_message(
     await db.flush()
 
     PathLib("media/attachments").mkdir(parents=True, exist_ok=True)
-    attachment_urls = []
+    attachment_ids = []
     for file in files:
         ext = PathLib(file.filename).suffix.lower() if file.filename else ""
         unique_filename = f"{uuid.uuid4().hex}{ext}"
@@ -218,7 +217,8 @@ async def send_message(
             size=file.size
         )
         db.add(attachment)
-        attachment_urls.append(f"/media/{filepath}")
+        await db.flush()
+        attachment_ids.append(attachment.id)
 
     await db.commit()
-    return {"ok": True, "message_id": new_message.id, "uploaded_files": attachment_urls}
+    return {"ok": True, "message_id": new_message.id, "uploaded_files": attachment_ids}
