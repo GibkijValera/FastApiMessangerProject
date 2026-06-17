@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign in</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .wrapper {
+            max-width: 450px;
+            width: 90%;
+            margin: 40px auto;
+            padding: 40px;
+            background: #1e1e1e;
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 140, 0, 0.2);
+            border: 1px solid rgba(255, 140, 0, 0.3);
+        }
+
+        /* Header */
+        .login-header {
+            text-align: center;
+            margin-bottom: 35px;
+        }
+
+        .login-header span {
+            font-size: 32px;
+            font-weight: bold;
+            color: #ff8c00;
+            letter-spacing: 2px;
+            text-shadow: 0 0 10px rgba(255, 140, 0, 0.3);
+            display: inline-block;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #ff8c00;
+        }
+
+        /* Form elements */
+        input {
+            display: block;
+            margin: 15px 0;
+            padding: 14px 18px;
+            width: 100%;
+            border-radius: 10px;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            background: #2a2a2a;
+            border: 1px solid #3a3a3a;
+            color: #fff;
+            outline: none;
+        }
+
+        input:focus {
+            border-color: #ff8c00;
+            box-shadow: 0 0 8px rgba(255, 140, 0, 0.3);
+            background: #333;
+        }
+
+        input::placeholder {
+            color: #666;
+        }
+
+        button {
+            display: block;
+            margin: 20px 0 10px;
+            padding: 14px 18px;
+            width: 100%;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            background: #ff8c00;
+            color: #1a1a1a;
+            border: none;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #e07c00;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(255, 140, 0, 0.3);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        /* Register link */
+        .register-link {
+            text-align: center;
+            margin-top: 20px;
+            padding-top: 15px;
+            border-top: 1px solid #3a3a3a;
+        }
+
+        .register-link a {
+            color: #ff8c00;
+            text-decoration: none;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+
+        .register-link a:hover {
+            color: #e07c00;
+            text-decoration: underline;
+        }
+
+        .register-link p {
+            color: #888;
+            font-size: 13px;
+            margin-bottom: 8px;
+        }
+
+        /* Error message */
+        #errorMsg {
+            color: #ff6b6b;
+            font-size: 13px;
+            text-align: center;
+            margin-top: 10px;
+            padding: 8px;
+            background: rgba(255, 107, 107, 0.1);
+            border-radius: 8px;
+            display: none;
+        }
+
+        /* Loading state */
+        button.loading {
+            background: #666;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        button.loading:hover {
+            background: #666;
+            transform: none;
+            box-shadow: none;
+        }
+
+        /* Responsive */
+        @media (max-width: 500px) {
+            .wrapper {
+                padding: 25px;
+            }
+            
+            .login-header span {
+                font-size: 26px;
+            }
+            
+            input, button {
+                padding: 12px 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="wrapper">
+        <div class="login-header">
+            <span>🔐 Вход</span>
+        </div>
+        
+        <form id="loginForm" onsubmit="return login(event)">
+            <input type="email" id="email" placeholder="📧 Электронная почта" required>
+            <input type="password" id="password" placeholder="🔑 Пароль" required>
+            <button type="submit" id="submitBtn">Войти</button>
+        </form>
+        
+        <div id="errorMsg"></div>
+        
+        <div class="register-link">
+            <p>Нет аккаунта?</p>
+            <a href="/auth/register">📝 Зарегистрироваться</a>
+        </div>
+    </div>
+
+    <script>
+        async function login(event) {
+            event.preventDefault();
+            
+            const email = document.getElementById('email').value.trim();
+            const password = document.getElementById('password').value;
+            const errorDiv = document.getElementById('errorMsg');
+            const submitBtn = document.getElementById('submitBtn');
+            
+            errorDiv.style.display = 'none';
+            
+            if (!email || !password) {
+                errorDiv.textContent = '❌ Заполните все поля';
+                errorDiv.style.display = 'block';
+                return false;
+            }
+            
+            submitBtn.textContent = '⏳ Вход...';
+            submitBtn.disabled = true;
+            submitBtn.classList.add('loading');
+            
+            const formData = new URLSearchParams();
+            formData.append('username', email);
+            formData.append('password', password);
+            
+            try {
+                const response = await fetch('/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: formData
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    sessionStorage.setItem('access_token', data.access_token);
+                    sessionStorage.setItem('token_type', data.token_type);
+                    window.location.href = '/profile';
+                } else {
+                    const error = await response.json();
+                    errorDiv.textContent = '❌ ' + (error.detail || 'Неверный email или пароль');
+                    errorDiv.style.display = 'block';
+                    submitBtn.textContent = 'Войти';
+                    submitBtn.disabled = false;
+                    submitBtn.classList.remove('loading');
+                }
+            } catch (error) {
+                errorDiv.textContent = '❌ Ошибка соединения с сервером';
+                errorDiv.style.display = 'block';
+                submitBtn.textContent = 'Войти';
+                submitBtn.disabled = false;
+                submitBtn.classList.remove('loading');
+            }
+            
+            return false;
+        }
+    </script>
+</body>
+</html>

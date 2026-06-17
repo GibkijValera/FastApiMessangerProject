@@ -1,11 +1,23 @@
 import uvicorn
 from fastapi import FastAPI
+from contextlib import asynccontextmanager
 from users.users import users_router
 from chats.chats import chats_router
 from auth.auth import auth_router
 from friends.friends import friends_router
 from media.nginx_sim import media_router
-app = FastAPI()
+from RedisManager.redis import redis_manager
+
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI()):
+    await redis_manager.connect()
+    yield
+    await redis_manager.disconnect()
+
+
+app = FastAPI(lifespan=lifespan)
 app.include_router(users_router)
 app.include_router(chats_router)
 app.include_router(auth_router)

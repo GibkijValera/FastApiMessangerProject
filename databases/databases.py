@@ -84,4 +84,3 @@ class UserModel(Base):
     hash_pwd: Mapped[str]
     bio: Mapped[str]
     email: Mapped[str] = mapped_column(index=True)
-

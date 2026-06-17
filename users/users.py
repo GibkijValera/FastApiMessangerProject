@@ -16,7 +16,7 @@ from pathlib import Path as PathLib
 users_router = APIRouter(prefix="/users", tags=["users"])
 
 
-@users_router.post("/{user2_id}/message")
+@users_router.post("id/{user2_id}/message")
 async def lazy_creation_chat(text: Annotated[str, Form()],  files: List[UploadFile] = File(default=None),
                              user2_id: int = Path(ge=1), user_id: int = Depends(get_current_user),
                              db: AsyncSession = Depends(get_db)):
@@ -162,6 +162,7 @@ async def delete_avatar(user_id: int = Depends(get_current_user), db: AsyncSessi
     await db.commit()
     return {"ok": True}
 
+
 @users_router.post("/profile/pictures/wall")
 async def upload_wall_photo(file: UploadFile = File(default=None), user_id: int = Depends(get_current_user),
                             db: AsyncSession = Depends(get_db)):
@@ -189,12 +190,12 @@ async def upload_wall_photo(file: UploadFile = File(default=None), user_id: int 
     return {"ok": True}
 
 
-@users_router.get("/{user2_id}/pictures/wall")
+@users_router.get("/id/{user2_id}/pictures/wall")
 async def get_wall_photos(user2_id: int = Path(ge=1), user_id: int = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     result = await get_pictures(user2_id, db, "wall")
     return {
         "ok": True,
-        "URLS": [file.filepath for file in result]
+        "files": [{"id": file.id, "URL": file.filepath} for file in result]
     }
 
 
@@ -203,8 +204,21 @@ async def get_profile_wall_photos(user_id: int = Depends(get_current_user), db: 
     result = await get_pictures(user_id, db, "wall")
     return {
         "ok": True,
-        "URLS": [file.filepath for file in result]
+        "files": [{"id": file.id, "URL": file.filepath} for file in result]
     }
+
+
+@users_router.delete("/profile/pictures/wall/{picture_id}")
+async def delete_wall_photo(user_id: int= Depends(get_current_user), db: AsyncSession = Depends(get_db), picture_id: int = Path(ge=1)):
+    result = await db.execute(delete(PictureModel).where(PictureModel.owner_id == user_id,
+                                                         PictureModel.id == picture_id, PictureModel.placement == "wall"))
+    if result.rowcount == 0:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Nothing found or you have no permission"
+        )
+    await db.commit()
+    return{"ok": True}
 
 
 async def get_pictures(user_id, db: AsyncSession, placement: str):
@@ -235,7 +249,7 @@ async def get_profile_avatar(user_id: int = Depends(get_current_user), db: Async
         )
 
 
-@users_router.get("/{user2_id}/pictures/avatar")
+@users_router.get("/id/{user2_id}/pictures/avatar")
 async def get_avatar(user2_id: int = Path(ge=1), user_id: int = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     result = await get_pictures(user2_id, db, "avatar")
     avatar = next(iter(result), None)
@@ -257,7 +271,7 @@ async def get_avatar(user2_id: int = Path(ge=1), user_id: int = Depends(get_curr
         )
 
 
-@users_router.post("/{user2_id}/pictures/avatar")
+@users_router.post("/id/{user2_id}/pictures/avatar")
 async def upload_avatar(file: UploadFile = File(default=None), user2_id: int = Path(ge=1), user_id: int = Depends(get_current_user),
                         db: AsyncSession = Depends(get_db)):
     filetype = await validate_file_type(file)
@@ -287,7 +301,7 @@ async def upload_avatar(file: UploadFile = File(default=None), user2_id: int = P
     return {"ok": True}
 
 
-@users_router.get("/{user_id}")
+@users_router.get("/id/{user_id}")
 async def get_user(user_id: int = Path(ge=1), requester_id: int = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(UserModel).where(UserModel.id == user_id))
     data = result.scalar_one_or_none()

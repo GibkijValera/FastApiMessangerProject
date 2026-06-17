@@ -1,13 +1,78 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+import time
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from databases.databases import get_db, UserModel
-from auth.crypto import verify_password, create_access_token, ACCESS_TOKEN_EXPIRE_MINUTES, get_password_hash
-from datetime import timedelta
+from auth.validation import decode_temp_token
+from auth.crypto import verify_password, create_access_token, ACCESS_TOKEN_EXPIRE_MINUTES, get_password_hash, create_code
+from datetime import timedelta, datetime
+from RedisManager.redis import redis_manager as r
+from core.core import templates
+
 
 auth_router = APIRouter(prefix="/auth", tags=["auth"])
+
+expire_delta = timedelta(minutes=10)
+
+
+def mark_nonce_as_used(nonce, ttl_seconds=900):
+    r.setex(f"nonce:{nonce}", ttl_seconds, "1")
+
+
+def is_nonce_used(nonce):
+    return r.exists(f"nonce:{nonce}")
+
+
+@auth_router.get("/register")
+async def register_page(request: Request):
+    return templates.TemplateResponse("login.html", {"request": request, "title": "Регистрация"})
+
+
+@auth_router.get("/login")
+async def auth_page(request: Request):
+    return templates.TemplateResponse("auth.html", {"request": request, "title": "Авторизация"})
+
+
+class SendCodeSchema(BaseModel):
+    email: EmailStr
+
+
+@auth_router.post("/register/send_code")
+async def send_code(schema: SendCodeSchema):
+    date = datetime.now()
+    code = create_code(schema.email, date)
+    print(code)
+    return {
+        "ok": True,
+        "date": date
+    }
+
+
+class CheckCodeSchema(BaseModel):
+    email: EmailStr
+    date: datetime
+    code: int
+
+
+@auth_router.post("/register/check_code")
+async def check_code(schema: CheckCodeSchema):
+    if datetime.now() - schema.date > expire_delta:
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail="Code is expired"
+        )
+    code = create_code(schema.email, schema.date)
+    if code != schema.code:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Invalid code"
+        )
+    else:
+        print("kkk")
+        temp_token = create_access_token({"email": schema.email})
+        return {"ok": True, "token": temp_token}
 
 
 class RegisterSchema(BaseModel):
@@ -16,10 +81,22 @@ class RegisterSchema(BaseModel):
     lastname: str = Field(min_length=1, max_length=32)
     pwd: str = Field(min_length=8, max_length=32)
     bio: None | str = Field(max_length=255)
+    token: str
 
 
-@auth_router.post("/register")
+@auth_router.post("/register/send_data")
 async def register(schema: RegisterSchema, db: AsyncSession = Depends(get_db)):
+    email, exp = await decode_temp_token(schema.token)
+    if int(datetime.now().timestamp()) > exp:
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail="Registration link is expired, please try again"
+        )
+    if email != schema.email:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token"
+        )
     result = await db.execute(select(UserModel).where(UserModel.email == schema.email))
     if result.scalar_one_or_none():
         raise HTTPException(

@@ -1,10 +1,14 @@
 from datetime import datetime, timedelta
 from jose import jwt, JWTError
 from passlib.context import CryptContext
-
+from cryptography.fernet import Fernet
+import hashlib
+key = Fernet.generate_key()
+cipher = Fernet(key)
 SECRET_KEY = "A_vEry-_ve.RY_VERy_SuPEr+SEcrET_Ke123y"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
+
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -15,6 +19,12 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 def get_password_hash(password: str) -> str:
     return pwd_context.hash(password)
+
+
+def create_code(email: str, date: datetime):
+    data = f"{email}{date}{SECRET_KEY}"
+    code = int(hashlib.sha256(data.encode()).hexdigest(), 16) % 100000
+    return code
 
 
 def create_access_token(data: dict, expires_delta: timedelta = None):

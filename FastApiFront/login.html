@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign in</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .wrapper {
+            max-width: 550px;
+            width: 90%;
+            margin: 40px auto;
+            padding: 35px;
+            background: #1e1e1e;
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 140, 0, 0.2);
+            border: 1px solid rgba(255, 140, 0, 0.3);
+        }
+
+        /* Steps navigation */
+        .steps {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 40px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .step {
+            padding: 10px 20px;
+            background: #2a2a2a;
+            border-radius: 30px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            color: #888;
+            border: 1px solid #3a3a3a;
+        }
+
+        .step:hover {
+            background: #3a3a3a;
+            color: #ff8c00;
+        }
+
+        .step.active {
+            background: #ff8c00;
+            color: #1a1a1a;
+            box-shadow: 0 0 15px rgba(255, 140, 0, 0.4);
+            border-color: #ff8c00;
+        }
+
+        /* Form content */
+        .step-content {
+            display: none;
+            animation: fadeIn 0.4s ease;
+        }
+
+        .step-content.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Form elements */
+        input, textarea, button {
+            display: block;
+            margin: 12px 0;
+            padding: 12px 15px;
+            width: 100%;
+            border-radius: 10px;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+
+        input, textarea {
+            background: #2a2a2a;
+            border: 1px solid #3a3a3a;
+            color: #fff;
+            outline: none;
+        }
+
+        input:focus, textarea:focus {
+            border-color: #ff8c00;
+            box-shadow: 0 0 8px rgba(255, 140, 0, 0.3);
+            background: #333;
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 80px;
+            font-family: inherit;
+        }
+
+        button {
+            background: #ff8c00;
+            color: #1a1a1a;
+            border: none;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 15px;
+        }
+
+        button:hover {
+            background: #e07c00;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(255, 140, 0, 0.3);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        /* Button group for prev/next */
+        .button-group {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .button-group button {
+            flex: 1;
+        }
+
+        /* Hidden button */
+        .button.hidden, #reg_button.hidden {
+            display: none;
+        }
+
+        #reg_button {
+            margin-top: 20px;
+            background: #ff8c00;
+            font-size: 16px;
+            padding: 14px;
+        }
+
+        /* Error messages */
+        .email_error, .code_error {
+            color: #ff6b6b;
+            font-size: 12px;
+            margin-top: -8px;
+            margin-bottom: 10px;
+            display: none;
+        }
+
+        /* Header */
+        .Log-in span {
+            font-size: 28px;
+            font-weight: bold;
+            color: #ff8c00;
+            text-align: center;
+            display: block;
+            margin-bottom: 30px;
+            letter-spacing: 2px;
+            text-shadow: 0 0 10px rgba(255, 140, 0, 0.3);
+        }
+
+        /* Placeholder styling */
+        input::placeholder, textarea::placeholder {
+            color: #666;
+        }
+
+        /* Code input specific */
+        input#code {
+            letter-spacing: 3px;
+            font-size: 18px;
+            text-align: center;
+            font-weight: bold;
+        }
+
+        /* Responsive */
+        @media (max-width: 500px) {
+            .wrapper {
+                padding: 20px;
+            }
+            
+            .step {
+                padding: 6px 12px;
+                font-size: 11px;
+            }
+            
+            .button-group {
+                flex-direction: column;
+                gap: 8px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="wrapper">
+        <div class="Log-in">
+            <span>🔐 Регистрация</span>
+        </div>
+        <div class="steps">
+            <div id="ico1" class="step active">📝 Bio</div>
+            <div id="ico2" class="step">🔒 Password</div>
+            <div id="ico3" class="step">✉️ E-mail</div>
+            <div id="ico4" class="step">✅ Confirm</div>
+        </div>
+        <form id="registration form">
+            <div id="step1" class="step-content active">
+                <input type="text" id="name" placeholder="👤 Имя" required>
+                <input type="text" id="lastname" placeholder="👥 Фамилия" required>
+                <textarea id="bio" placeholder="📝 О себе (необязательно)"></textarea>
+                <button type="button" onclick="nextStep()">Далее →</button>
+            </div>
+            <div id="step2" class="step-content">
+                <input type="password" id="pwd" placeholder="🔑 Пароль" required>
+                <input type="password" id="conf_pwd" placeholder="✓ Подтвердите пароль" required>
+                <div class="button-group">
+                    <button type="button" onclick="prevStep()">← Назад</button>
+                    <button type="button" onclick="nextStep()">Далее →</button>
+                </div>
+            </div>
+            <div id="step3" class="step-content">
+                <input type="email" id="email" placeholder="📧 Электронная почта" required>
+                <div class="email_error">❌ Неверный e-mail</div>
+                <button type="button" onclick="sendCode()">📨 Отправить код</button>
+                <input type="text" id="code" placeholder="🔢 Введите пятизначный код" maxlength="5" pattern="\d*" inputmode="numeric" autocomplete="off" required>
+                <button type="button" onclick="checkCode()">✅ Проверить код</button>
+                <div class="code_error">❌ Неправильный код</div>
+                <div class="button-group">
+                    <button type="button" onclick="prevStep()">← Назад</button>
+                    <button id="reg_button" type="button" class="hidden" onclick="sendData()">🚀 Зарегистрироваться</button>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <script>
+        let tempToken = null;
+        let currentStep = 1;
+        let currentEmail = null;
+        let server_time = null;
+
+        async function prevStep() {
+            if (currentStep > 1) {
+                document.getElementById(`step${currentStep}`).classList.remove('active');
+                document.getElementById(`ico${currentStep}`).classList.remove('active');
+                currentStep -= 1;
+                document.getElementById(`step${currentStep}`).classList.add('active');
+                document.getElementById(`ico${currentStep}`).classList.add('active');
+            }
+        }
+
+        async function nextStep() {          
+            let flag = false;
+            if (currentStep === 1) {
+                flag = await validateStep1();
+            } else if (currentStep === 2) {
+                flag = await validateStep2();
+            } else if (currentStep === 3) {
+                flag = await validateStep3();
+            }
+            if (flag) {
+                document.getElementById(`step${currentStep}`).classList.remove('active');
+                document.getElementById(`ico${currentStep}`).classList.remove('active');
+                currentStep++;
+                document.getElementById(`step${currentStep}`).classList.add('active');
+                document.getElementById(`ico${currentStep}`).classList.add('active');
+            }
+        }
+
+        async function validateStep1() {
+            let name = document.getElementById('name').value.trim();
+            let lastname = document.getElementById('lastname').value.trim();
+            
+            if (!name || !lastname) {
+                alert('❌ Введите имя и фамилию');
+                return false;
+            }
+            if (name.length < 1 || name.length > 32 || lastname.length < 1 || lastname.length > 32) {
+                alert('❌ Имя и фамилия должны быть от 1 до 32 символов');
+                return false;
+            }
+            return true;
+        }
+        
+        async function validateStep2() {
+            let pwd = document.getElementById('pwd').value;
+            let conf_pwd = document.getElementById('conf_pwd').value;
+            
+            if (!pwd || !conf_pwd) {
+                alert('❌ Введите и подтвердите пароль');
+                return false;
+            }
+            if (pwd !== conf_pwd) {
+                alert('❌ Пароли не совпадают');
+                return false;
+            }
+            if (pwd.length < 8 || pwd.length > 32) {
+                alert('❌ Пароль должен быть от 8 до 32 символов');
+                return false;
+            }
+            return true;
+        }
+
+        async function validateStep3() {
+            if (!document.getElementById('email').value || !tempToken) {
+                alert('❌ Адрес электронной почты не подтверждён');
+                return false;
+            }
+            return true;
+        }
+
+        async function sendCode() {
+            let email = document.getElementById('email').value.trim();
+            if (!email) {
+                alert('❌ Введите адрес электронной почты');
+                return false;
+            }
+            
+            const response = await fetch('/auth/register/send_code', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ email: email })
+            });
+            const data = await response.json();
+            if (!response.ok || !data.ok) {
+                alert('❌ Ошибка: ' + (data.detail || 'Не удалось отправить код'));
+                return false;
+            }
+            server_time = data.date;
+            currentEmail = email;
+            alert('✅ Код подтверждения отправлен на почту');
+            return true;
+        }
+
+        async function checkCode() {
+            let codeInput = document.getElementById('code').value;
+            if (!codeInput) {
+                alert('❌ Введите код подтверждения');
+                return false;
+            }
+            
+            let code = Number(codeInput);
+            if (isNaN(code) || code < 10000 || code > 99999) {
+                alert('❌ Код должен быть пятизначным числом');
+                return false;
+            }
+            
+            const response = await fetch('/auth/register/check_code', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    email: currentEmail,
+                    date: server_time,
+                    code: code
+                })
+            });
+            const data = await response.json();
+            if (!response.ok || !data.ok) {
+                alert('❌ ' + (data.detail || 'Неверный код'));
+                return false;
+            }
+            tempToken = data.token;
+            document.getElementById('reg_button').classList.remove('hidden');
+            alert('✅ Почта подтверждена!');
+            return true;
+        }
+
+        async function sendData() {
+            const userData = {
+                name: document.getElementById('name').value.trim(),
+                lastname: document.getElementById('lastname').value.trim(),
+                bio: document.getElementById('bio').value.trim() || null,
+                pwd: document.getElementById('pwd').value,
+                email: document.getElementById('email').value.trim(),
+                token: tempToken
+            };
+            
+            const response = await fetch('/auth/register/send_data', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(userData)
+            });
+            const data = await response.json();
+            if (!response.ok || !data.ok) {
+                alert('❌ Ошибка регистрации: ' + (data.detail || 'Попробуйте позже'));
+                return false;
+            }
+            alert('✅ Регистрация успешна! Перенаправление...');
+            window.location.replace('/auth');
+            return true;
+        }
+    </script>
+</body>
+</html>
