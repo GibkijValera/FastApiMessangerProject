@@ -1,4 +1,5 @@
 import uuid
+import urllib.parse
 from datetime import datetime
 from typing import Optional
 from fastapi.responses import FileResponse
@@ -11,8 +12,9 @@ from databases.databases import get_db, ChatModel, ChatMember, MessageModel, Att
 from auth.validation import get_current_user
 from pathlib import Path as PathLib
 messages_router = APIRouter(prefix="/{chat_id}/messages", tags=["messages"])
-from media.MediaInfo import MAX_FILE_SIZE, MAX_TOTAL_SIZE, ALLOWED_CONTENT_TYPES
+from media.MediaInfo import MAX_FILE_SIZE, MAX_TOTAL_SIZE, FORBIDDEN_CONTENT_TYPE
 from media.MediaInfo import MEDIA_ROOT
+
 
 class PatchMessageSchema(BaseModel):
     text: str = Field(min_length=1)
@@ -66,7 +68,7 @@ async def download_attachment(
             .where(AttachmentModel.id == attachment_id, ChatMember.user_id == user_id, AttachmentModel.message_id == message_id))
     result = (await db.execute(stmt)).scalar_one_or_none()
     if not result:
-        raise HTTPException (
+        raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Not allowed or does not exist"
         )
@@ -82,10 +84,10 @@ async def download_attachment(
 
 @messages_router.get("/{message_id}/attachments/{attachment_id}/view")
 async def view_attachment(
-    attachment_id: int = Path(ge=1),
-    message_id: int = Path(ge=1),
-    user_id: int = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+        attachment_id: int = Path(ge=1),
+        message_id: int = Path(ge=1),
+        user_id: int = Depends(get_current_user),
+        db: AsyncSession = Depends(get_db)
 ):
     stmt = (
         select(AttachmentModel)
@@ -93,21 +95,29 @@ async def view_attachment(
         .join(ChatMember, ChatMember.chat_id == MessageModel.chat_id)
         .where(
             AttachmentModel.id == attachment_id,
-            ChatMember.user_id == user_id, AttachmentModel.message_id == message_id
+            ChatMember.user_id == user_id,
+            AttachmentModel.message_id == message_id
         )
     )
     result = await db.execute(stmt)
     result = result.scalar_one_or_none()
+
     if not result:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not allowed or does not exist")
+
     file_path = PathLib("media") / result.filepath
+
     if not file_path.is_file():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File missing")
+
+    filename_encoded = urllib.parse.quote(result.filename)
+    content_disposition = f"inline; filename*=UTF-8''{filename_encoded}"
+
     return FileResponse(
         path=file_path,
         media_type=result.content_type or "application/octet-stream",
         headers={
-            "Content-Disposition": f'inline; filename="{result.filename}"'
+            "Content-Disposition": content_disposition
         }
     )
 
@@ -120,6 +130,7 @@ async def get_message(limit: int = Query(20, ge=1, le=100), before: Optional[flo
         ChatMember.chat_id == chat_id,
         ChatMember.user_id == user_id))
     if not result.scalar_one_or_none():
+        print("Error")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No chat found or you are not a member"
@@ -132,8 +143,19 @@ async def get_message(limit: int = Query(20, ge=1, le=100), before: Optional[flo
     messages = result.scalars().all()
     response = []
     for msg in messages:
-        attachments = await db.execute(select(AttachmentModel).where(AttachmentModel.message_id == msg.id))
-        attachments = attachments.scalars().all()
+        attachments_result = await db.execute(
+            select(AttachmentModel).where(AttachmentModel.message_id == msg.id)
+        )
+        attachments = attachments_result.scalars().all()
+        files_data = []
+        for att in attachments:
+            files_data.append({
+                "id": att.id,
+                "filename": att.filename,
+                "content_type": att.content_type,
+                "is_image": att.content_type.startswith("image/") if att.content_type else False
+            })
+
         response.append(
             {
                 "message_id": msg.id,
@@ -141,7 +163,7 @@ async def get_message(limit: int = Query(20, ge=1, le=100), before: Optional[flo
                 "chat_id": msg.chat_id,
                 "text": msg.text,
                 "sent_at": msg.sent_at,
-                "attachment_ids": [att.id for att in attachments]
+                "attachments": files_data
             }
         )
     return {
@@ -165,7 +187,7 @@ async def send_message(
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                 detail=f"File too large. Max size is {MAX_FILE_SIZE // (1024 * 1024)} MB"
             )
-        if file.content_type not in ALLOWED_CONTENT_TYPES:
+        if file.content_type in FORBIDDEN_CONTENT_TYPE:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="File type not allowed"

@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>💬 Чаты</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #121212; 
+            color: #ffffff;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .container {
+            display: flex;
+            height: 100vh;
+        }
+
+        .chat-list-panel {
+            width: 320px;
+            background: #1e1e1e;
+            border-right: 1px solid #3a3a3a;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chat-list-header {
+            padding: 25px 20px;
+            border-bottom: 1px solid #3a3a3a;
+            font-size: 20px;
+            font-weight: 700;
+            color: #ff8c00;
+            text-align: center;
+        }
+
+        .chat-list {
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .chat-item {
+            padding: 15px 20px;
+            border-bottom: 1px solid #2a2a2a;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border-left: 3px solid transparent;
+        }
+
+        .chat-item:hover {
+            background: #2a2a2a;
+        }
+
+        .chat-item.active {
+            background: #2a2a2a;
+            border-left: 3px solid #ff8c00;
+            box-shadow: inset 0 0 10px rgba(255, 140, 0, 0.1);
+        }
+
+        .chat-name {
+            font-weight: 600;
+            color: #fff;
+            margin-bottom: 5px;
+            font-size: 15px;
+        }
+
+        .chat-type {
+            font-size: 12px;
+            color: #888;
+        }
+
+        .chat-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: #121212;
+            position: relative;
+        }
+
+        .chat-empty {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #888;
+            font-size: 18px;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            display: none;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .chat-messages.active {
+            display: flex;
+        }
+
+        .message {
+            max-width: 70%;
+            padding: 12px 16px;
+            border-radius: 18px;
+            position: relative;
+            line-height: 1.4;
+            word-wrap: break-word;
+            font-size: 14px;
+        }
+
+        .message.other {
+            align-self: flex-start;
+            background: #000000;
+            color: #ffffff;
+            border: 1px solid #3a3a3a;
+            border-bottom-left-radius: 4px;
+        }
+
+        .message.own {
+            align-self: flex-end;
+            background: #ff8c00;
+            color: #ffffff;
+            border-bottom-right-radius: 4px;
+            box-shadow: 0 4px 15px rgba(255, 140, 0, 0.2);
+        }
+
+        .message-meta {
+            font-size: 10px;
+            margin-top: 5px;
+            opacity: 0.7;
+            text-align: right;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #888;
+        }
+
+        .error {
+            text-align: center;
+            padding: 20px;
+            color: #ff4444;
+        }
+
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1e1e1e;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #3a3a3a;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #ff8c00;
+        }
+               .chat-input-area {
+            padding: 20px;
+            background: #1e1e1e;
+            border-top: 1px solid #3a3a3a;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .file-upload-btn {
+            background: #2a2a2a;
+            border: 1px solid #3a3a3a;
+            color: #ff8c00;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            transition: all 0.2s;
+        }
+
+        .file-upload-btn:hover {
+            background: #3a3a3a;
+            box-shadow: 0 0 10px rgba(255, 140, 0, 0.2);
+        }
+
+        .message-input {
+            flex: 1;
+            background: #2a2a2a;
+            border: 1px solid #3a3a3a;
+            border-radius: 20px;
+            padding: 10px 15px;
+            color: white;
+            font-family: inherit;
+            resize: none;
+            height: 40px;
+            outline: none;
+        }
+
+        .message-input:focus {
+            border-color: #ff8c00;
+        }
+
+        .send-btn {
+            background: #ff8c00;
+            border: none;
+            color: #1a1a1a;
+            padding: 0 20px;
+            height: 40px;
+            border-radius: 20px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+
+        .send-btn:active {
+            transform: scale(0.95);
+        }
+
+        .hidden { display: none; }
+
+        .attachment-container {
+            margin-top: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .attachment-img {
+            max-width: 100%;
+            max-height: 300px;
+            border-radius: 12px;
+            cursor: pointer;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: transform 0.2s;
+        }
+
+        .attachment-img:hover {
+            transform: scale(1.02);
+        }
+
+        .attachment-file-link {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 8px 12px;
+            border-radius: 8px;
+            color: #fff;
+            text-decoration: none;
+            font-size: 13px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: background 0.2s;
+        }
+
+        .attachment-file-link:hover {
+            background: rgba(255, 140, 0, 0.2);
+            border-color: #ff8c00;
+        }
+
+        .file-icon {
+            font-size: 18px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="chat-list-panel">
+            <div class="chat-list-header">💬 Чаты</div>
+            <div class="chat-list" id="chatList">
+                <div class="loading">Загрузка...</div>
+            </div>
+        </div>
+
+        <div class="chat-panel">
+            <div class="chat-empty" id="emptyState">
+                <span style="font-size: 40px;">💭</span>
+                <span>Выберите чат для начала общения</span>
+            </div>
+            
+            <div class="chat-messages" id="chatMessages"></div>
+
+            <div class="chat-input-area hidden" id="inputArea">
+                <label for="fileInput" class="file-upload-btn" title="Прикрепить файл">+</label>
+                <input type="file" id="fileInput" class="hidden" multiple>
+                
+                <textarea class="message-input" id="messageText" placeholder="Напишите сообщение..." rows="1"></textarea>
+                <button class="send-btn" id="sendBtn">🚀 Отправить</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentUserId = null;
+        let currentChatId = null;
+        let pollingInterval = null;
+        async function init() {
+            try {
+                const response = await fetch('/users/me', { credentials: 'include' });
+                if (response.status === 401) { window.location.href = '/auth/login'; return; }
+                const data = await response.json();
+                currentUserId = data.user_id;
+                await loadChats();
+            } catch (error) { window.location.href = '/auth/login'; }
+        }
+
+        async function loadChats() {
+            const chatListEl = document.getElementById('chatList');
+            
+            try {
+                const response = await fetch('/chats/load', {
+                    credentials: 'include'
+                });
+                
+                if (response.status === 401) {
+                    window.location.href = '/auth/login';
+                    return;
+                }
+                
+                const data = await response.json();
+                
+                if (!data.ok) {
+                    chatListEl.innerHTML = '<div class="error">❌ Ошибка загрузки чатов</div>';
+                    return;
+                }
+
+                chatListEl.innerHTML = '';
+                
+                if (data.chat_list.length === 0) {
+                    chatListEl.innerHTML = '<div style="padding: 20px; color: #888; text-align: center;">Нет чатов 📭</div>';
+                    return;
+                }
+
+                data.chat_list.forEach(chat => {
+                    const chatItem = document.createElement('div');
+                    chatItem.className = 'chat-item';
+                    chatItem.dataset.chatId = chat.chat_id;
+                    
+                    const typeIcon = chat.is_private ? '👤' : '👥';
+                    const typeName = chat.is_private ? 'Личный' : 'Групповой';
+                    
+                    chatItem.innerHTML = `
+                        <div class="chat-name">${typeIcon} ${chat.chat_name}</div>
+                        <div class="chat-type">${typeName}</div>
+                    `;
+                    
+                    chatItem.addEventListener('click', () => selectChat(chat.chat_id, chatItem));
+                    chatListEl.appendChild(chatItem);
+                });
+                
+            } catch (error) {
+                console.error('Ошибка:', error);
+                chatListEl.innerHTML = '<div class="error">❌ Ошибка подключения</div>';
+            }
+        }
+
+        async function selectChat(chatId, chatElement) {
+            document.querySelectorAll('.chat-item').forEach(item => item.classList.remove('active'));
+            chatElement.classList.add('active');
+            currentChatId = chatId;
+            
+            document.getElementById('emptyState').style.display = 'none';
+            document.getElementById('inputArea').classList.remove('hidden');
+            const messagesPanel = document.getElementById('chatMessages');
+            messagesPanel.classList.add('active');
+            messagesPanel.innerHTML = '<div class="loading">Загрузка сообщений...</div>';
+            
+            await loadMessages(chatId);
+            startPolling();
+        }
+
+        function startPolling() {
+            if (pollingInterval) clearInterval(pollingInterval);
+            pollingInterval = setInterval(() => {
+                if (currentChatId) {
+                    loadMessages(currentChatId, true);
+                }
+            }, 4000);
+        }
+
+        async function loadMessages(chatId, append = false) {
+            try {
+                const response = await fetch(`/chats/${chatId}/messages?limit=50`, { credentials: 'include' });
+                if (response.status === 401) { window.location.href = '/auth/login'; return; }
+                
+                const data = await response.json();
+                if (!data.ok || !data.messages) return;
+
+                const messagesPanel = document.getElementById('chatMessages');
+                if (!append) messagesPanel.innerHTML = '';
+
+                const sortedMessages = data.messages.sort((a, b) => new Date(a.sent_at) - new Date(b.sent_at));
+                
+                sortedMessages.forEach(msg => {
+                    if (append && document.getElementById(`msg-${msg.message_id}`)) return;
+
+                    const messageEl = document.createElement('div');
+                    const isOwn = msg.user_id === currentUserId;
+                    messageEl.id = `msg-${msg.message_id}`;
+                    messageEl.className = `message ${isOwn ? 'own' : 'other'}`;
+                    
+                    let timeStr = "??:??";
+                    try {
+                        const dateObj = new Date(msg.sent_at);
+                        if (!isNaN(dateObj.getTime())) {
+                            timeStr = dateObj.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+                        }
+                    } catch (e) {}
+
+                    let attachmentsHtml = '';
+                    if (msg.attachments && msg.attachments.length > 0) {
+                        attachmentsHtml = '<div class="attachment-container">';
+                        msg.attachments.forEach(att => {
+                            const fileUrl = `/chats/${chatId}/messages/${msg.message_id}/attachments/${att.id}/view`;
+                            
+                            if (att.is_image) {
+                                attachmentsHtml += `<img src="${fileUrl}" class="attachment-img" onclick="window.open('${fileUrl}')">`;
+                            } else {
+                                attachmentsHtml += `
+                                    <a href="${fileUrl}" target="_blank" class="attachment-file-link">
+                                        <span class="file-icon">📎</span>
+                                        <span>${escapeHtml(att.filename)}</span>
+                                    </a>`;
+                            }
+                        });
+                        attachmentsHtml += '</div>';
+                    }
+                    
+                    messageEl.innerHTML = `
+                        ${escapeHtml(msg.text)}
+                        ${attachmentsHtml}
+                        <div class="message-meta">${timeStr}</div>
+                    `;
+                    messagesPanel.appendChild(messageEl);
+                });
+                
+                messagesPanel.scrollTop = messagesPanel.scrollHeight;
+            } catch (error) { console.error(error); }
+        }
+
+        async function sendMessage() {
+            const textInput = document.getElementById('messageText');
+            const fileInput = document.getElementById('fileInput');
+            const text = textInput.value.trim();
+            const files = fileInput.files;
+
+            if (!text && files.length === 0) return;
+
+            const formData = new FormData();
+            formData.append('text', text);
+            for (let i = 0; i < files.length; i++) {
+                const fileName = files[i].name;
+                const ext = fileName.split('.').pop().toLowerCase();
+                const blockedExts = ['exe', 'bat', 'cmd', 'sh', 'msi'];
+                
+                if (blockedExts.includes(ext)) {
+                    alert(`❌ Файл ${fileName} запрещен к отправке (исполняемый формат)`);
+                    return;
+                }
+                formData.append('files', files[i]);
+            }
+
+            try {
+                const response = await fetch(`/chats/${currentChatId}/messages`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    textInput.value = '';
+                    fileInput.value = '';
+                    await loadMessages(currentChatId); 
+                }
+            } catch (error) { console.error('Ошибка отправки:', error); }
+        }
+        document.getElementById('sendBtn').addEventListener('click', sendMessage);
+        document.getElementById('messageText').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        init();
+    </script>
+</body>
+</html>

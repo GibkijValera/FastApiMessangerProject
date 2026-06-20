@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Path
+from fastapi import APIRouter, Depends, Path, Request
 from fastapi import HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,6 +7,7 @@ from sqlalchemy import select, update, delete
 from typing import List, Set
 from auth.validation import get_current_user
 from chats.messages.messages import messages_router
+from core.core import templates
 chats_router = APIRouter(prefix="/chats", tags=["chats"])
 chats_router.include_router(messages_router)
 
@@ -16,7 +17,12 @@ class SetChatSchema(BaseModel):
     name: None | str = Field(min_length=1, max_length=64)
 
 
-@chats_router.post("")
+@chats_router.get("")
+async def chat_page(request: Request, user_id: int = Depends(get_current_user)):
+    return templates.TemplateResponse("chats.html", {"request": request, "title": "Чаты"})
+
+
+@chats_router.post("/create")
 async def create_chat(schema: SetChatSchema, owner_id: int = Depends(get_current_user),
                       db: AsyncSession = Depends(get_db)):
     for member in schema.members_id:
@@ -48,17 +54,23 @@ async def create_chat(schema: SetChatSchema, owner_id: int = Depends(get_current
     return {"ok": True, "chat_id": new_chat.id}
 
 
-@chats_router.get("")
+@chats_router.get("/load")
 async def load_all_chats(user_id: int = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(ChatMember.chat_id, ChatModel.name, ChatModel.is_private)
         .join(ChatModel, ChatMember.chat_id == ChatModel.id)
         .where(ChatMember.user_id == user_id)
     )
-    loaded_chats = [
-        {"chat_id": row[0], "chat_name": row[1], "is_private": row[2]}
-        for row in result.all()
-    ]
+    loaded_chats = []
+    for row in result.all():
+        if row[2]:
+            result = await db.execute(select(UserModel.name, UserModel.lastname).join(ChatMember, ChatMember.user_id == UserModel.id)
+                                      .where(ChatMember.chat_id == row[0], UserModel.id != user_id))
+            result_row = result.first()
+            name, lastname = result_row.name, result_row.lastname
+            loaded_chats.append({"chat_id": row[0], "chat_name": name + " " + lastname, "is_private": row[2]})
+        else:
+            loaded_chats.append({"chat_id": row[0], "chat_name": row[1], "is_private": row[2]})
     return {
         "ok": True,
         "chat_list": loaded_chats

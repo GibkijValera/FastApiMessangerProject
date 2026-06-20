@@ -8,8 +8,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, update
 from sqlalchemy.orm import aliased
-from media.MediaInfo import MAX_FILE_SIZE, MAX_TOTAL_SIZE, ALLOWED_CONTENT_TYPES, get_ext, MEDIA_ROOT
-from media.pictures import ALLOWED_PICTURE_TYPE, default_avatar, default_avatar_name
+from media.MediaInfo import MAX_FILE_SIZE, MAX_TOTAL_SIZE, ALLOWED_PICTURE_TYPE, get_ext, MEDIA_ROOT, FORBIDDEN_CONTENT_TYPE
+from media.pictures import default_avatar, default_avatar_name
 from auth.validation import get_current_user
 from databases.databases import get_db, UserModel, ChatMember, ChatModel, MessageModel, AttachmentModel, PictureModel
 from pathlib import Path as PathLib
@@ -53,7 +53,7 @@ async def lazy_creation_chat(text: Annotated[str, Form()],  files: List[UploadFi
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                 detail=f"File too large. Max size is {MAX_FILE_SIZE // (1024 * 1024)} MB"
             )
-        if file.content_type not in ALLOWED_CONTENT_TYPES:
+        if file.content_type in FORBIDDEN_CONTENT_TYPE:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="File type not allowed"
@@ -130,6 +130,14 @@ async def delete_user_profile(user_id: int = Depends(get_current_user), db: Asyn
         )
     await db.commit()
     return {"ok": True}
+
+
+@users_router.get("/me")
+async def get_me(user_id: int = Depends(get_current_user)):
+    return {
+        "ok": True,
+        "user_id": user_id
+    }
 
 
 @users_router.get("/profile")

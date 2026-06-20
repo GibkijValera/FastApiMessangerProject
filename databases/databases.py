@@ -2,6 +2,7 @@ import asyncio
 from datetime import datetime, timezone
 
 from sqlalchemy import ForeignKey, String, Index
+from sqlalchemy.sql.functions import now
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 engine = create_async_engine(url="sqlite+aiosqlite:///databases/messanger.db", echo=True)
@@ -39,7 +40,7 @@ class PictureModel(Base):
     size: Mapped[int]
     owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     placement: Mapped[str] = mapped_column(default="avatar")
-    date: Mapped[datetime] = mapped_column(default=datetime.now(timezone.utc))
+    date: Mapped[datetime] = mapped_column(default=now())
 
 class MessageModel(Base):
     __tablename__ = "messages"
@@ -47,7 +48,7 @@ class MessageModel(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     chat_id: Mapped[int] = mapped_column(ForeignKey("chats.id", ondelete="CASCADE"))
     text: Mapped[str] = mapped_column()
-    sent_at: Mapped[datetime] = mapped_column(default=datetime.now(timezone.utc))
+    sent_at: Mapped[datetime] = mapped_column(default=now())
 
 
 Index("idx_messages_chat_sent", MessageModel.chat_id, MessageModel.sent_at)
@@ -57,7 +58,7 @@ class ChatMember(Base):
     chat_id: Mapped[int] = mapped_column(ForeignKey("chats.id", ondelete="CASCADE"), primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
     role: Mapped[str] = mapped_column(String(20), default="member")
-    joined_at: Mapped[datetime] = mapped_column(default=datetime.now(timezone.utc))
+    joined_at: Mapped[datetime] = mapped_column(default=now())
 
 
 class ChatModel(Base):
@@ -72,7 +73,7 @@ class UserFriends(Base):
     __tablename__ = "user_friends"
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), primary_key=True)
     friend_id: Mapped[int] = mapped_column(ForeignKey("users.id"), primary_key=True)
-    created_at: Mapped[datetime] = mapped_column(default=datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(default=now())
     status: Mapped[str] = mapped_column(String(20), default="pending")
 
 
@@ -82,5 +83,5 @@ class UserModel(Base):
     name: Mapped[str] = mapped_column(index=True)
     lastname: Mapped[str] = mapped_column(index=True)
     hash_pwd: Mapped[str]
-    bio: Mapped[str]
+    bio: Mapped[str | None]
     email: Mapped[str] = mapped_column(index=True)

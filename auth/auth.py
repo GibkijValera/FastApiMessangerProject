@@ -1,5 +1,5 @@
 import time
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -104,6 +104,8 @@ async def register(schema: RegisterSchema, db: AsyncSession = Depends(get_db)):
             detail="Email already registered"
         )
     hashed_pwd = get_password_hash(schema.pwd)
+    if schema.bio is None:
+        schema.bio = ""
     new_user = UserModel(
         email=schema.email,
         hash_pwd=hashed_pwd,
@@ -118,7 +120,7 @@ async def register(schema: RegisterSchema, db: AsyncSession = Depends(get_db)):
 
 
 @auth_router.post("/login")
-async def login(
+async def login(response: Response,
         form_data: OAuth2PasswordRequestForm = Depends(),
         db: AsyncSession = Depends(get_db)
 ):
@@ -135,5 +137,14 @@ async def login(
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={"sub": str(user.id)}, expires_delta=access_token_expires
+    )
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        secure=False,
+        samesite="lax",
+        path="/",
+        max_age=3600
     )
     return {"access_token": access_token, "token_type": "bearer"}

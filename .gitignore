@@ -5,4 +5,6 @@ __pycache__/
 requirments.txt
 myssh.txt
 myssh.txt.pub
-/media
+/media/Pictures
+/media/Attachments
+databases/messanger.db
