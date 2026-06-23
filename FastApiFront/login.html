@@ -358,7 +358,7 @@
             }
             
             let code = Number(codeInput);
-            if (isNaN(code) || code < 10000 || code > 99999) {
+            if (isNaN(code) || code < 0 || code > 99999) {
                 alert('❌ Код должен быть пятизначным числом');
                 return false;
             }
