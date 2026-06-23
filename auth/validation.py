@@ -1,12 +1,14 @@
-from fastapi import Depends, HTTPException, status, Request
+from fastapi import HTTPException, status, Request
+from fastapi.responses import RedirectResponse
 from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from databases.databases import get_db, UserModel
 from auth.crypto import SECRET_KEY, ALGORITHM
-
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
+
+
+class RedirectException(Exception):
+    def __init__(self, url="/auth/login"):
+        self.url = url
 
 
 async def decode_temp_token(token: str):
@@ -37,12 +39,7 @@ async def get_current_user(request: Request) -> int:
     if not token:
         token = request.query_params.get("token")
     if not token:
-        raise HTTPException(
-            status_code=401,
-            detail="Not authenticated",
-            headers={"WWW-Authenticate": "Bearer"}
-        )
-
+        raise RedirectException()
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         user_id = payload.get("sub")
