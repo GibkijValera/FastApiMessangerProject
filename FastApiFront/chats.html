@@ -13,7 +13,7 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #121212; 
+            background: #121212;
             color: #ffffff;
             height: 100vh;
             overflow: hidden;
@@ -52,6 +52,7 @@
             cursor: pointer;
             transition: all 0.2s ease;
             border-left: 3px solid transparent;
+            position: relative;
         }
 
         .chat-item:hover {
@@ -64,16 +65,69 @@
             box-shadow: inset 0 0 10px rgba(255, 140, 0, 0.1);
         }
 
+        .chat-item.has-unread {
+            background: #1a1a1a;
+        }
+
+        .chat-item.has-unread .chat-name {
+            color: #ff8c00;
+            font-weight: 700;
+        }
+
+        .chat-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+
         .chat-name {
             font-weight: 600;
             color: #fff;
-            margin-bottom: 5px;
             font-size: 15px;
+            flex: 1;
+        }
+
+        .chat-time {
+            font-size: 11px;
+            color: #666;
+            margin-left: 10px;
+        }
+
+        .chat-preview {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .chat-last-message {
+            font-size: 13px;
+            color: #888;
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
 
         .chat-type {
             font-size: 12px;
-            color: #888;
+            color: #666;
+            margin-top: 3px;
+        }
+
+        .unread-badge {
+            background: #ff8c00;
+            color: white;
+            border-radius: 50%;
+            min-width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: 600;
+            margin-left: 8px;
+            padding: 0 6px;
         }
 
         .chat-panel {
@@ -166,7 +220,8 @@
         ::-webkit-scrollbar-thumb:hover {
             background: #ff8c00;
         }
-               .chat-input-area {
+
+        .chat-input-area {
             padding: 20px;
             background: #1e1e1e;
             border-top: 1px solid #3a3a3a;
@@ -275,6 +330,7 @@
     </style>
 </head>
 <body>
+
     <div class="container">
         <div class="chat-list-panel">
             <div class="chat-list-header">💬 Чаты</div>
@@ -288,13 +344,13 @@
                 <span style="font-size: 40px;">💭</span>
                 <span>Выберите чат для начала общения</span>
             </div>
-            
+
             <div class="chat-messages" id="chatMessages"></div>
 
             <div class="chat-input-area hidden" id="inputArea">
                 <label for="fileInput" class="file-upload-btn" title="Прикрепить файл">+</label>
                 <input type="file" id="fileInput" class="hidden" multiple>
-                
+
                 <textarea class="message-input" id="messageText" placeholder="Напишите сообщение..." rows="1"></textarea>
                 <button class="send-btn" id="sendBtn">🚀 Отправить</button>
             </div>
@@ -304,39 +360,199 @@
     <script>
         let currentUserId = null;
         let currentChatId = null;
-        let pollingInterval = null;
+        let socket = null;
+        let reconnectTimeout = null;
+        const unreadCounts = {};
+
         async function init() {
             try {
                 const response = await fetch('/users/me', { credentials: 'include' });
-                if (response.status === 401) { window.location.href = '/auth/login'; return; }
-                const data = await response.json();
-                currentUserId = data.user_id;
-                await loadChats();
-            } catch (error) { window.location.href = '/auth/login'; }
-        }
-
-        async function loadChats() {
-            const chatListEl = document.getElementById('chatList');
-            
-            try {
-                const response = await fetch('/chats/load', {
-                    credentials: 'include'
-                });
-                
                 if (response.status === 401) {
                     window.location.href = '/auth/login';
                     return;
                 }
-                
                 const data = await response.json();
-                
+                currentUserId = data.user_id;
+
+                connectWebSocket();
+                await loadChats();
+            } catch (error) {
+                console.error('Init error:', error);
+                window.location.href = '/auth/login';
+            }
+        }
+
+        function connectWebSocket() {
+            if (reconnectTimeout) {
+                clearTimeout(reconnectTimeout);
+                reconnectTimeout = null;
+            }
+
+            if (socket) {
+                socket.close();
+            }
+
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws/`;
+
+            socket = new WebSocket(wsUrl);
+
+            socket.onopen = () => {
+                console.log("✅ WebSocket connected");
+            };
+
+            socket.onmessage = (event) => {
+                try {
+                    const messageData = JSON.parse(event.data);
+                    handleIncomingMessage(messageData);
+                } catch (e) {
+                    console.error('Error parsing WS message:', e);
+                }
+            };
+
+            socket.onclose = (event) => {
+                if (event.code === 4001) {
+                    window.location.href = '/auth/login';
+                    return;
+                }
+                reconnectTimeout = setTimeout(connectWebSocket, 3000);
+            };
+
+            socket.onerror = (error) => {
+                console.error("WebSocket error:", error);
+            };
+        }
+
+                function handleIncomingMessage(msg) {
+            if (!msg.id || !msg.user_id || !msg.chat_id) return;
+
+            const chatId = parseInt(msg.chat_id, 10);
+            const isOwnMessage = msg.user_id === currentUserId;
+            updateChatPreview(chatId, msg, isOwnMessage);
+            if (currentChatId && chatId === currentChatId) {
+                addMessageToUI(msg);
+            }
+        }
+
+        function updateChatPreview(chatId, msg, isOwnMessage) {
+            const chatElement = document.querySelector(`.chat-item[data-chat-id="${chatId}"]`);
+            if (!chatElement) return;
+
+            let previewText = msg.text || '';
+            if (msg.attachments && msg.attachments.length > 0) {
+                if (previewText) previewText += ' ';
+                previewText += `📎 ${msg.attachments.length} влож.`;
+            }
+
+            if (!previewText) previewText = 'Нет текста';
+            if (previewText.length > 50) previewText = previewText.substring(0, 47) + '...';
+            if (isOwnMessage) previewText = 'Вы: ' + previewText;
+
+            let timeStr = '';
+            try {
+                const dateObj = new Date(msg.time);
+                if (!isNaN(dateObj.getTime())) {
+                    timeStr = dateObj.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+                }
+            } catch (e) {}
+
+            const lastMessageEl = chatElement.querySelector('.chat-last-message');
+            if (lastMessageEl) lastMessageEl.textContent = previewText;
+
+            const timeEl = chatElement.querySelector('.chat-time');
+            if (timeEl && timeStr) timeEl.textContent = timeStr;
+            if (!isOwnMessage && currentChatId !== chatId) {
+                if (!unreadCounts[chatId]) unreadCounts[chatId] = 0;
+                unreadCounts[chatId]++;
+
+                let badge = chatElement.querySelector('.unread-badge');
+                if (!badge) {
+                    badge = document.createElement('span');
+                    badge.className = 'unread-badge';
+                    const previewContainer = chatElement.querySelector('.chat-preview');
+                    if (previewContainer) previewContainer.appendChild(badge);
+                }
+                badge.textContent = unreadCounts[chatId];
+                chatElement.classList.add('has-unread');
+            } else if (currentChatId === chatId) {
+                const badge = chatElement.querySelector('.unread-badge');
+                if (badge) badge.remove();
+                chatElement.classList.remove('has-unread');
+            }
+
+            const chatList = document.getElementById('chatList');
+            if (chatList && chatList.firstChild !== chatElement) {
+                chatList.insertBefore(chatElement, chatList.firstChild);
+            }
+        }
+
+        function addMessageToUI(msg) {
+            const messagesPanel = document.getElementById('chatMessages');
+            if (!messagesPanel) return;
+
+            if (document.getElementById(`msg-${msg.id}`)) return;
+
+            const messageEl = document.createElement('div');
+            const isOwn = msg.user_id === currentUserId;
+            messageEl.id = `msg-${msg.id}`;
+            messageEl.className = `message ${isOwn ? 'own' : 'other'}`;
+
+            let timeStr = "??:??";
+            try {
+                const dateObj = new Date(msg.time);
+                if (!isNaN(dateObj.getTime())) {
+                    timeStr = dateObj.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+                }
+            } catch (e) {}
+
+            let attachmentsHtml = '';
+            if (msg.attachments && msg.attachments.length > 0) {
+                attachmentsHtml = '<div class="attachment-container">';
+                msg.attachments.forEach(att => {
+                    const isImage = att.content_type && att.content_type.startsWith('image/');
+                    const fileUrl = `/chats/${msg.chat_id}/messages/${msg.id}/attachments/${att.id}/view`;
+
+                    if (isImage) {
+                        attachmentsHtml += `<img src="${fileUrl}" class="attachment-img" onclick="window.open('${fileUrl}')">`;
+                    } else {
+                        attachmentsHtml += `
+                            <a href="${fileUrl}" target="_blank" class="attachment-file-link">
+                                <span class="file-icon">📎</span>
+                                <span>${escapeHtml(att.filename)}</span>
+                            </a>`;
+                    }
+                });
+                attachmentsHtml += '</div>';
+            }
+
+            messageEl.innerHTML = `
+                ${escapeHtml(msg.text || '')}
+                ${attachmentsHtml}
+                <div class="message-meta">${timeStr}</div>
+            `;
+
+            messagesPanel.appendChild(messageEl);
+            messagesPanel.scrollTop = messagesPanel.scrollHeight;
+        }
+
+        async function loadChats() {
+            const chatListEl = document.getElementById('chatList');
+
+            try {
+                const response = await fetch('/chats/load', { credentials: 'include' });
+                if (response.status === 401) {
+                    window.location.href = '/auth/login';
+                    return;
+                }
+
+                const data = await response.json();
                 if (!data.ok) {
                     chatListEl.innerHTML = '<div class="error">❌ Ошибка загрузки чатов</div>';
                     return;
                 }
 
                 chatListEl.innerHTML = '';
-                
+
                 if (data.chat_list.length === 0) {
                     chatListEl.innerHTML = '<div style="padding: 20px; color: #888; text-align: center;">Нет чатов 📭</div>';
                     return;
@@ -346,19 +562,41 @@
                     const chatItem = document.createElement('div');
                     chatItem.className = 'chat-item';
                     chatItem.dataset.chatId = chat.chat_id;
-                    
+
                     const typeIcon = chat.is_private ? '👤' : '👥';
-                    const typeName = chat.is_private ? 'Личный' : 'Групповой';
-                    
+
+                    let lastMsgText = "Нет сообщений";
+                    let lastMsgTime = "";
+
+                    if (chat.last_message) {
+                        lastMsgText = chat.last_message.text || "📎 Вложение";
+                        if (lastMsgText.length > 40) lastMsgText = lastMsgText.substring(0, 37) + "...";
+
+                        if (chat.last_message.sent_at) {
+                            const dateObj = new Date(chat.last_message.sent_at);
+                            lastMsgTime = dateObj.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+                        }
+
+                        if (chat.last_message.user_id === currentUserId) {
+                            lastMsgText = "Вы: " + lastMsgText;
+                        }
+                    }
+
                     chatItem.innerHTML = `
-                        <div class="chat-name">${typeIcon} ${chat.chat_name}</div>
-                        <div class="chat-type">${typeName}</div>
+                        <div class="chat-header">
+                            <div class="chat-name">${typeIcon} ${chat.chat_name}</div>
+                            <div class="chat-time">${lastMsgTime}</div>
+                        </div>
+                        <div class="chat-preview">
+                            <div class="chat-last-message">${escapeHtml(lastMsgText)}</div>
+                        </div>
+                        <div class="chat-type">${chat.is_private ? 'Личный' : 'Групповой'}</div>
                     `;
-                    
-                    chatItem.addEventListener('click', () => selectChat(chat.chat_id, chatItem));
+
+                    chatItem.addEventListener('click', () => selectChat(parseInt(chat.chat_id, 10), chatItem));
                     chatListEl.appendChild(chatItem);
                 });
-                
+
             } catch (error) {
                 console.error('Ошибка:', error);
                 chatListEl.innerHTML = '<div class="error">❌ Ошибка подключения</div>';
@@ -368,85 +606,62 @@
         async function selectChat(chatId, chatElement) {
             document.querySelectorAll('.chat-item').forEach(item => item.classList.remove('active'));
             chatElement.classList.add('active');
+
+            if (unreadCounts[chatId]) {
+                delete unreadCounts[chatId];
+                const badge = chatElement.querySelector('.unread-badge');
+                if (badge) badge.remove();
+                chatElement.classList.remove('has-unread');
+            }
+
             currentChatId = chatId;
-            
+
             document.getElementById('emptyState').style.display = 'none';
             document.getElementById('inputArea').classList.remove('hidden');
             const messagesPanel = document.getElementById('chatMessages');
             messagesPanel.classList.add('active');
             messagesPanel.innerHTML = '<div class="loading">Загрузка сообщений...</div>';
-            
+
             await loadMessages(chatId);
-            startPolling();
         }
 
-        function startPolling() {
-            if (pollingInterval) clearInterval(pollingInterval);
-            pollingInterval = setInterval(() => {
-                if (currentChatId) {
-                    loadMessages(currentChatId, true);
-                }
-            }, 4000);
-        }
-
-        async function loadMessages(chatId, append = false) {
+        async function loadMessages(chatId) {
             try {
                 const response = await fetch(`/chats/${chatId}/messages?limit=50`, { credentials: 'include' });
-                if (response.status === 401) { window.location.href = '/auth/login'; return; }
-                
+
+                if (response.status === 401) {
+                    window.location.href = '/auth/login';
+                    return;
+                }
+
                 const data = await response.json();
-                if (!data.ok || !data.messages) return;
+                if (!data.ok || !data.messages) {
+                    document.getElementById('chatMessages').innerHTML = '<div class="error">❌ Ошибка загрузки сообщений</div>';
+                    return;
+                }
 
                 const messagesPanel = document.getElementById('chatMessages');
-                if (!append) messagesPanel.innerHTML = '';
+                messagesPanel.innerHTML = '';
 
                 const sortedMessages = data.messages.sort((a, b) => new Date(a.sent_at) - new Date(b.sent_at));
-                
+
                 sortedMessages.forEach(msg => {
-                    if (append && document.getElementById(`msg-${msg.message_id}`)) return;
-
-                    const messageEl = document.createElement('div');
-                    const isOwn = msg.user_id === currentUserId;
-                    messageEl.id = `msg-${msg.message_id}`;
-                    messageEl.className = `message ${isOwn ? 'own' : 'other'}`;
-                    
-                    let timeStr = "??:??";
-                    try {
-                        const dateObj = new Date(msg.sent_at);
-                        if (!isNaN(dateObj.getTime())) {
-                            timeStr = dateObj.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-                        }
-                    } catch (e) {}
-
-                    let attachmentsHtml = '';
-                    if (msg.attachments && msg.attachments.length > 0) {
-                        attachmentsHtml = '<div class="attachment-container">';
-                        msg.attachments.forEach(att => {
-                            const fileUrl = `/chats/${chatId}/messages/${msg.message_id}/attachments/${att.id}/view`;
-                            
-                            if (att.is_image) {
-                                attachmentsHtml += `<img src="${fileUrl}" class="attachment-img" onclick="window.open('${fileUrl}')">`;
-                            } else {
-                                attachmentsHtml += `
-                                    <a href="${fileUrl}" target="_blank" class="attachment-file-link">
-                                        <span class="file-icon">📎</span>
-                                        <span>${escapeHtml(att.filename)}</span>
-                                    </a>`;
-                            }
-                        });
-                        attachmentsHtml += '</div>';
-                    }
-                    
-                    messageEl.innerHTML = `
-                        ${escapeHtml(msg.text)}
-                        ${attachmentsHtml}
-                        <div class="message-meta">${timeStr}</div>
-                    `;
-                    messagesPanel.appendChild(messageEl);
+                    const normalizedMsg = {
+                        id: msg.message_id,
+                        user_id: msg.user_id,
+                        text: msg.text,
+                        time: msg.sent_at,
+                        chat_id: chatId,
+                        attachments: msg.attachments || []
+                    };
+                    addMessageToUI(normalizedMsg);
                 });
-                
+
                 messagesPanel.scrollTop = messagesPanel.scrollHeight;
-            } catch (error) { console.error(error); }
+            } catch (error) {
+                console.error('Error loading messages:', error);
+                document.getElementById('chatMessages').innerHTML = '<div class="error">❌ Ошибка загрузки сообщений</div>';
+            }
         }
 
         async function sendMessage() {
@@ -457,17 +672,20 @@
 
             if (!text && files.length === 0) return;
 
-            const formData = new FormData();
-            formData.append('text', text);
             for (let i = 0; i < files.length; i++) {
                 const fileName = files[i].name;
                 const ext = fileName.split('.').pop().toLowerCase();
                 const blockedExts = ['exe', 'bat', 'cmd', 'sh', 'msi'];
-                
+
                 if (blockedExts.includes(ext)) {
-                    alert(`❌ Файл ${fileName} запрещен к отправке (исполняемый формат)`);
+                    alert(`❌ Файл ${fileName} запрещен к отправке`);
                     return;
                 }
+            }
+
+            const formData = new FormData();
+            formData.append('text', text);
+            for (let i = 0; i < files.length; i++) {
                 formData.append('files', files[i]);
             }
 
@@ -479,13 +697,38 @@
                 });
 
                 if (response.ok) {
+                    const result = await response.json();
+
                     textInput.value = '';
                     fileInput.value = '';
-                    await loadMessages(currentChatId); 
+
+                    const tempMessage = {
+                        id: result.message_id,
+                        user_id: currentUserId,
+                        text: text,
+                        time: new Date().toISOString(),
+                        chat_id: currentChatId,
+                        attachments: result.uploaded_files.map((fileId, index) => ({
+                            id: fileId,
+                            filename: files[index]?.name || 'file',
+                            content_type: files[index]?.type || 'application/octet-stream'
+                        }))
+                    };
+
+                    addMessageToUI(tempMessage);
+                    updateChatPreview(currentChatId, tempMessage, true);
+                } else {
+                    const errorData = await response.json().catch(() => ({}));
+                    alert(`❌ Ошибка отправки: ${errorData.detail || 'Неизвестная ошибка'}`);
                 }
-            } catch (error) { console.error('Ошибка отправки:', error); }
+            } catch (error) {
+                console.error('Ошибка отправки:', error);
+                alert('❌ Ошибка подключения при отправке');
+            }
         }
+
         document.getElementById('sendBtn').addEventListener('click', sendMessage);
+
         document.getElementById('messageText').addEventListener('keypress', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
@@ -494,6 +737,7 @@
         });
 
         function escapeHtml(text) {
+            if (!text) return '';
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;

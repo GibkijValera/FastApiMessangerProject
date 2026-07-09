@@ -49,14 +49,13 @@ class MessageModel(Base):
     chat_id: Mapped[int] = mapped_column(ForeignKey("chats.id", ondelete="CASCADE"))
     text: Mapped[str] = mapped_column()
     sent_at: Mapped[datetime] = mapped_column(default=now())
+    __table_args__ = (Index("idx_messages_chat_sent", chat_id, sent_at), )
 
-
-Index("idx_messages_chat_sent", MessageModel.chat_id, MessageModel.sent_at)
 
 class ChatMember(Base):
     __tablename__ = "chat_members"
     chat_id: Mapped[int] = mapped_column(ForeignKey("chats.id", ondelete="CASCADE"), primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True, index=True)
     role: Mapped[str] = mapped_column(String(20), default="member")
     joined_at: Mapped[datetime] = mapped_column(default=now())
 

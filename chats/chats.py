@@ -2,8 +2,8 @@ from fastapi import APIRouter, Depends, Path, Request
 from fastapi import HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
-from databases.databases import get_db, UserModel, ChatModel, ChatMember
-from sqlalchemy import select, update, delete
+from databases.databases import get_db, UserModel, ChatModel, ChatMember, MessageModel
+from sqlalchemy import select, update, delete, func, and_
 from typing import List, Set
 from auth.validation import get_current_user
 from chats.messages.messages import messages_router
@@ -56,26 +56,71 @@ async def create_chat(schema: SetChatSchema, owner_id: int = Depends(get_current
 
 @chats_router.get("/load")
 async def load_all_chats(user_id: int = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
+    chats_query = (
         select(ChatMember.chat_id, ChatModel.name, ChatModel.is_private)
         .join(ChatModel, ChatMember.chat_id == ChatModel.id)
         .where(ChatMember.user_id == user_id)
     )
+    chats_result = await db.execute(chats_query)
+    chats_rows = chats_result.all()
+
+    if not chats_rows:
+        return {"ok": True, "chat_list": []}
+
+    chat_ids = [row[0] for row in chats_rows]
+    subquery = (
+        select(
+            MessageModel.chat_id,
+            func.max(MessageModel.id).label('max_msg_id')
+        )
+        .where(MessageModel.chat_id.in_(chat_ids))
+        .group_by(MessageModel.chat_id)
+        .subquery()
+    )
+
+    last_messages_query = (
+        select(MessageModel.chat_id, MessageModel.text, MessageModel.user_id, MessageModel.sent_at)
+        .join(subquery, and_(
+            MessageModel.chat_id == subquery.c.chat_id,
+            MessageModel.id == subquery.c.max_msg_id
+        ))
+    )
+
+    messages_result = await db.execute(last_messages_query)
+    last_msg_map = {}
+    for row in messages_result.all():
+        last_msg_map[row.chat_id] = {
+            "text": row.text,
+            "user_id": row.user_id,
+            "sent_at": row.sent_at.isoformat() if row.sent_at else None
+        }
     loaded_chats = []
-    for row in result.all():
-        if row[2]:
-            result = await db.execute(select(UserModel.name, UserModel.lastname).join(ChatMember, ChatMember.user_id == UserModel.id)
-                                      .where(ChatMember.chat_id == row[0], UserModel.id != user_id))
-            result_row = result.first()
-            name, lastname = result_row.name, result_row.lastname
-            loaded_chats.append({"chat_id": row[0], "chat_name": name + " " + lastname, "is_private": row[2]})
-        else:
-            loaded_chats.append({"chat_id": row[0], "chat_name": row[1], "is_private": row[2]})
+
+    for row in chats_rows:
+        chat_id, chat_name_db, is_private = row
+        final_chat_name = chat_name_db
+        if is_private:
+            user_res = await db.execute(
+                select(UserModel.name, UserModel.lastname)
+                .join(ChatMember, ChatMember.user_id == UserModel.id)
+                .where(ChatMember.chat_id == chat_id, UserModel.id != user_id)
+            )
+            user_row = user_res.first()
+            if user_row:
+                final_chat_name = f"{user_row.name} {user_row.lastname}"
+        last_msg = last_msg_map.get(chat_id)
+
+        loaded_chats.append({
+            "chat_id": chat_id,
+            "chat_name": final_chat_name,
+            "is_private": is_private,
+            "last_message": last_msg
+        })
+
     return {
         "ok": True,
         "chat_list": loaded_chats
     }
-
 
 class PatchChatSchema(BaseModel):
     name: None | str = Field(min_length=1, max_length=64)

@@ -1,4 +1,5 @@
 import uuid
+import aiofiles
 import urllib.parse
 from datetime import datetime
 from typing import Optional
@@ -11,6 +12,7 @@ from sqlalchemy import select, desc, delete, update
 from databases.databases import get_db, ChatModel, ChatMember, MessageModel, AttachmentModel
 from auth.validation import get_current_user
 from pathlib import Path as PathLib
+from websocket.ws import manager
 messages_router = APIRouter(prefix="/{chat_id}/messages", tags=["messages"])
 from media.MediaInfo import MAX_FILE_SIZE, MAX_TOTAL_SIZE, FORBIDDEN_CONTENT_TYPE
 from media.MediaInfo import MEDIA_ROOT
@@ -221,16 +223,17 @@ async def send_message(
     new_message = MessageModel(user_id=user_id, chat_id=chat_id, text=text)
     db.add(new_message)
     await db.flush()
-
+    data = {"user_id": user_id, "chat_id": chat_id, "text": text, "time": new_message.sent_at.isoformat(), "id": new_message.id}
     PathLib("media/attachments").mkdir(parents=True, exist_ok=True)
+    attachments = []
     attachment_ids = []
     for file in files:
         ext = PathLib(file.filename).suffix.lower() if file.filename else ""
         unique_filename = f"{uuid.uuid4().hex}{ext}"
         filepath = f"attachments/{unique_filename}"
         full_path = PathLib("media") / filepath
-        with open(full_path, "wb") as f:
-            f.write(await file.read())
+        async with aiofiles.open(full_path, "wb") as f:
+            await f.write(await file.read())
         attachment = AttachmentModel(
             message_id=new_message.id,
             filename=file.filename or unique_filename,
@@ -240,7 +243,9 @@ async def send_message(
         )
         db.add(attachment)
         await db.flush()
+        attachments.append({"id": attachment.id, "filename": attachment.filename, "content_type": attachment.content_type})
         attachment_ids.append(attachment.id)
-
+    data["attachments"] = attachments
     await db.commit()
+    await manager.send_to_chat(chat_id=chat_id, message_data=data)
     return {"ok": True, "message_id": new_message.id, "uploaded_files": attachment_ids}

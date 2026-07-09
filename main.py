@@ -8,8 +8,9 @@ from auth.auth import auth_router
 from auth.validation import RedirectException
 from friends.friends import friends_router
 from media.nginx_sim import media_router
-from RedisManager.redis import redis_manager
+from redis_manager.redis import redis_manager
 from root import root_router
+from websocket.ws import ws_router
 @asynccontextmanager
 async def lifespan(app: FastAPI()):
     await redis_manager.connect()
@@ -24,6 +25,7 @@ app.include_router(auth_router)
 app.include_router(friends_router)
 app.include_router(media_router)
 app.include_router(root_router)
+app.include_router(ws_router)
 
 @app.exception_handler(RedirectException)
 async def redirect_to_auth_handler(request: Request, exc: RedirectException):

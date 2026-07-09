@@ -8,7 +8,7 @@ from databases.databases import get_db, UserModel
 from auth.validation import decode_temp_token
 from auth.crypto import verify_password, create_access_token, ACCESS_TOKEN_EXPIRE_MINUTES, get_password_hash, create_code
 from datetime import timedelta, datetime
-from RedisManager.redis import redis_manager as r
+from redis_manager.redis import redis_manager as r
 from core.core import templates
 
 
