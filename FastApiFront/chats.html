@@ -279,6 +279,10 @@
             transition: transform 0.1s;
         }
 
+        .chat-input-area.editing .send-btn {
+            background: #ff8c00;
+        }
+
         .send-btn:active {
             transform: scale(0.95);
         }
@@ -327,6 +331,29 @@
         .file-icon {
             font-size: 18px;
         }
+
+        .context-menu {
+            position: absolute;
+            background: #2a2a2a;
+            border: 1px solid #3a3a3a;
+            border-radius: 8px;
+            padding: 5px 0;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+            z-index: 1000;
+            display: none;
+        }
+
+        .context-menu-item {
+            padding: 8px 16px;
+            cursor: pointer;
+            color: #fff;
+            font-size: 13px;
+            transition: background 0.2s;
+        }
+
+        .context-menu-item:hover {
+            background: #ff8c00;
+        }
     </style>
 </head>
 <body>
@@ -355,6 +382,10 @@
                 <button class="send-btn" id="sendBtn">🚀 Отправить</button>
             </div>
         </div>
+    </div>
+
+    <div class="context-menu" id="contextMenu">
+        <div class="context-menu-item" id="editMessageBtn">✏️ Редактировать</div>
     </div>
 
     <script>
@@ -428,10 +459,55 @@
 
             const chatId = parseInt(msg.chat_id, 10);
             const isOwnMessage = msg.user_id === currentUserId;
-            updateChatPreview(chatId, msg, isOwnMessage);
-            if (currentChatId && chatId === currentChatId) {
-                addMessageToUI(msg);
+
+            // Проверяем тип действия (новое сообщение или обновление)
+            if (msg.action === 'patch') {
+                updateMessageInUI(msg);
+            } else {
+                updateChatPreview(chatId, msg, isOwnMessage);
+                if (currentChatId && chatId === currentChatId) {
+                    addMessageToUI(msg);
+                }
             }
+        }
+
+        function updateMessageInUI(msg) {
+            const messageEl = document.getElementById(`msg-${msg.id}`);
+            if (!messageEl) return;
+
+            let timeStr = "??:??";
+            try {
+                const dateObj = new Date(msg.time);
+                if (!isNaN(dateObj.getTime())) {
+                    timeStr = dateObj.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+                }
+            } catch (e) {}
+
+            let attachmentsHtml = '';
+            if (msg.attachments && msg.attachments.length > 0) {
+                attachmentsHtml = '<div class="attachment-container">';
+                msg.attachments.forEach(att => {
+                    const isImage = att.content_type && att.content_type.startsWith('image/');
+                    const fileUrl = `/chats/${msg.chat_id}/messages/${msg.id}/attachments/${att.id}/view`;
+
+                    if (isImage) {
+                        attachmentsHtml += `<img src="${fileUrl}" class="attachment-img" onclick="window.open('${fileUrl}')">`;
+                    } else {
+                        attachmentsHtml += `
+                            <a href="${fileUrl}" target="_blank" class="attachment-file-link">
+                                <span class="file-icon">📎</span>
+                                <span>${escapeHtml(att.filename)}</span>
+                            </a>`;
+                    }
+                });
+                attachmentsHtml += '</div>';
+            }
+
+            messageEl.innerHTML = `
+                ${escapeHtml(msg.text || '')}
+                ${attachmentsHtml}
+                <div class="message-meta">${timeStr}</div>
+            `;
         }
 
         function updateChatPreview(chatId, msg, isOwnMessage) {
@@ -683,47 +759,82 @@
                 }
             }
 
-            const formData = new FormData();
-            formData.append('text', text);
-            for (let i = 0; i < files.length; i++) {
-                formData.append('files', files[i]);
-            }
-
             try {
-                const response = await fetch(`/chats/${currentChatId}/messages`, {
-                    method: 'POST',
-                    credentials: 'include',
-                    body: formData
-                });
+                let response;
 
-                if (response.ok) {
-                    const result = await response.json();
+                // Если режим редактирования - отправляем PATCH запрос
+                if (isEditingMode && editingMessageId) {
+                    const formData = new FormData();
+                    formData.append('text', text);
+                    for (let i = 0; i < files.length; i++) {
+                        formData.append('files', files[i]);
+                    }
 
-                    textInput.value = '';
-                    fileInput.value = '';
+                    response = await fetch(`/chats/${currentChatId}/messages/${editingMessageId}`, {
+                        method: 'PATCH',
+                        credentials: 'include',
+                        body: formData
+                    });
 
-                    const tempMessage = {
-                        id: result.message_id,
-                        user_id: currentUserId,
-                        text: text,
-                        time: new Date().toISOString(),
-                        chat_id: currentChatId,
-                        attachments: result.uploaded_files.map((fileId, index) => ({
-                            id: fileId,
-                            filename: files[index]?.name || 'file',
-                            content_type: files[index]?.type || 'application/octet-stream'
-                        }))
-                    };
+                    if (response.ok) {
+                        // Сбрасываем режим редактирования
+                        isEditingMode = false;
+                        editingMessageId = null;
 
-                    addMessageToUI(tempMessage);
-                    updateChatPreview(currentChatId, tempMessage, true);
+                        const inputArea = document.getElementById('inputArea');
+                        const sendBtn = document.getElementById('sendBtn');
+                        inputArea.classList.remove('editing');
+                        sendBtn.textContent = '🚀 Отправить';
+
+                        textInput.value = '';
+                        fileInput.value = '';
+                    } else {
+                        const errorData = await response.json().catch(() => ({}));
+                        alert(`❌ Ошибка сохранения: ${errorData.detail || 'Неизвестная ошибка'}`);
+                    }
                 } else {
-                    const errorData = await response.json().catch(() => ({}));
-                    alert(`❌ Ошибка отправки: ${errorData.detail || 'Неизвестная ошибка'}`);
+                    // Обычная отправка нового сообщения
+                    const formData = new FormData();
+                    formData.append('text', text);
+                    for (let i = 0; i < files.length; i++) {
+                        formData.append('files', files[i]);
+                    }
+
+                    response = await fetch(`/chats/${currentChatId}/messages`, {
+                        method: 'POST',
+                        credentials: 'include',
+                        body: formData
+                    });
+
+                    if (response.ok) {
+                        const result = await response.json();
+
+                        textInput.value = '';
+                        fileInput.value = '';
+
+                        const tempMessage = {
+                            id: result.message_id,
+                            user_id: currentUserId,
+                            text: text,
+                            time: new Date().toISOString(),
+                            chat_id: currentChatId,
+                            attachments: result.uploaded_files.map((fileId, index) => ({
+                                id: fileId,
+                                filename: files[index]?.name || 'file',
+                                content_type: files[index]?.type || 'application/octet-stream'
+                            }))
+                        };
+
+                        addMessageToUI(tempMessage);
+                        updateChatPreview(currentChatId, tempMessage, true);
+                    } else {
+                        const errorData = await response.json().catch(() => ({}));
+                        alert(`❌ Ошибка отправки: ${errorData.detail || 'Неизвестная ошибка'}`);
+                    }
                 }
             } catch (error) {
-                console.error('Ошибка отправки:', error);
-                alert('❌ Ошибка подключения при отправке');
+                console.error('Ошибка:', error);
+                alert('❌ Ошибка подключения');
             }
         }
 
@@ -734,6 +845,66 @@
                 e.preventDefault();
                 sendMessage();
             }
+        });
+
+        // Контекстное меню для редактирования сообщений
+        let selectedMessageId = null;
+        const contextMenu = document.getElementById('contextMenu');
+        const editMessageBtn = document.getElementById('editMessageBtn');
+        let isEditingMode = false;
+        let editingMessageId = null;
+
+        // Добавляем обработчик контекстного меню на панель сообщений
+        document.getElementById('chatMessages').addEventListener('contextmenu', (e) => {
+            const messageEl = e.target.closest('.message');
+            if (!messageEl) return;
+
+            e.preventDefault();
+
+            // Показываем меню только для своих сообщений
+            if (!messageEl.classList.contains('own')) return;
+
+            selectedMessageId = messageEl.id.replace('msg-', '');
+
+            // Позиционируем меню: правый угол меню крепится к левой стороне сообщения
+            const rect = messageEl.getBoundingClientRect();
+            const menuWidth = contextMenu.offsetWidth || 150; // Примерная ширина меню
+
+            contextMenu.style.display = 'block';
+            // Левая позиция меню = левая граница сообщения минус ширина меню
+            contextMenu.style.left = `${rect.left - menuWidth}px`;
+            contextMenu.style.top = `${rect.top}px`;
+        });
+
+        // Скрываем контекстное меню при клике в любом месте
+        document.addEventListener('click', () => {
+            contextMenu.style.display = 'none';
+        });
+
+        // Обработчик кнопки редактирования - переключает режим редактирования
+        editMessageBtn.addEventListener('click', async () => {
+            if (!selectedMessageId || !currentChatId) return;
+
+            const messageEl = document.getElementById(`msg-${selectedMessageId}`);
+            if (!messageEl) return;
+
+            const currentText = messageEl.childNodes[0]?.textContent?.trim() || '';
+
+            // Помещаем текст в поле ввода
+            const textInput = document.getElementById('messageText');
+            textInput.value = currentText;
+            textInput.focus();
+
+            // Переключаем интерфейс в режим редактирования
+            isEditingMode = true;
+            editingMessageId = selectedMessageId;
+
+            const inputArea = document.getElementById('inputArea');
+            const sendBtn = document.getElementById('sendBtn');
+            inputArea.classList.add('editing');
+            sendBtn.textContent = '💾 Сохранить';
+
+            contextMenu.style.display = 'none';
         });
 
         function escapeHtml(text) {

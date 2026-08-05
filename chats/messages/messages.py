@@ -1,6 +1,7 @@
 import uuid
 import aiofiles
 import urllib.parse
+import json
 from datetime import datetime
 from typing import Optional
 from fastapi.responses import FileResponse
@@ -20,22 +21,131 @@ from media.MediaInfo import MEDIA_ROOT
 
 class PatchMessageSchema(BaseModel):
     text: str = Field(min_length=1)
-
+    files: list[UploadFile] = []
+    delete_file_ids: dict = Field(default_factory=dict)
 
 @messages_router.patch("/{message_id}")
-async def patch_message(schema: PatchMessageSchema, message_id: int = Path(ge=1), chat_id: int = Path(ge=1),
-                        user_id: int = Depends(get_current_user),
-                        db: AsyncSession = Depends(get_db)):
-    result = await db.execute(update(MessageModel).where(
-        MessageModel.user_id == user_id, MessageModel.chat_id == chat_id, MessageModel.id == message_id).values(
-        text=schema.text))
-    if result.rowcount == 0:
+async def patch_message(
+    text: str = Form(..., min_length=1),
+    files: list[UploadFile] = File(default=None),
+    delete_file_ids: str = Form(default='{}'),
+    chat_id: int = Path(ge=1),
+    message_id: int = Path(ge=1),
+    user_id: int = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    try:
+        delete_file_ids_dict = json.loads(delete_file_ids) if delete_file_ids else {}
+    except json.JSONDecodeError:
+        delete_file_ids_dict = {}
+    stmt = select(MessageModel).where(
+        MessageModel.id == message_id,
+        MessageModel.chat_id == chat_id,
+        MessageModel.user_id == user_id
+    )
+    result = await db.execute(stmt)
+    message = result.scalar_one_or_none()
+
+    if not message:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Message not found or you don't have permission"
         )
+    if text:
+        message.text = text
+    files_to_delete = []
+    if delete_file_ids_dict and "id" in delete_file_ids_dict:
+        file_ids_to_delete = delete_file_ids_dict["id"]
+        if isinstance(file_ids_to_delete, list):
+            for file_id in file_ids_to_delete:
+                attachment_stmt = select(AttachmentModel).where(
+                    AttachmentModel.id == file_id,
+                    AttachmentModel.message_id == message_id
+                )
+                attachment_result = await db.execute(attachment_stmt)
+                attachment = attachment_result.scalar_one_or_none()
+
+                if attachment:
+                    files_to_delete.append(attachment.filepath)
+                    await db.delete(attachment)
+    attachments = []
+    attachment_ids = []
+
+    if files:
+        total_size = 0
+        for file in files:
+            if file.size is None or file.size > MAX_FILE_SIZE:
+                raise HTTPException(
+                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    detail=f"File too large. Max size is {MAX_FILE_SIZE // (1024 * 1024)} MB"
+                )
+            if file.content_type in FORBIDDEN_CONTENT_TYPE:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="File type not allowed"
+                )
+            total_size += file.size
+
+        if total_size > MAX_TOTAL_SIZE:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"Total files size too large. Max total size is {MAX_TOTAL_SIZE // (1024 * 1024)} MB"
+            )
+
+        PathLib("media/attachments").mkdir(parents=True, exist_ok=True)
+
+        for file in files:
+            ext = PathLib(file.filename).suffix.lower() if file.filename else ""
+            unique_filename = f"{uuid.uuid4().hex}{ext}"
+            filepath = f"attachments/{unique_filename}"
+            full_path = PathLib("media") / filepath
+            async with aiofiles.open(full_path, "wb") as f:
+                await f.write(await file.read())
+            attachment = AttachmentModel(
+                message_id=message_id,
+                filename=file.filename or unique_filename,
+                filepath=filepath,
+                content_type=file.content_type,
+                size=file.size
+            )
+            db.add(attachment)
+            await db.flush()
+            attachments.append({
+                "id": attachment.id,
+                "filename": attachment.filename,
+                "content_type": attachment.content_type
+            })
+            attachment_ids.append(attachment.id)
+
     await db.commit()
-    return {"ok": True}
+
+    for filepath in files_to_delete:
+        try:
+            file_path = PathLib(MEDIA_ROOT) / filepath
+            if file_path.is_file():
+                file_path.unlink()
+        except Exception as e:
+            print(f"Error deleting file {filepath}: {e}")
+    attachments_result = await db.execute(
+        select(AttachmentModel).where(AttachmentModel.message_id == message_id)
+    )
+    remaining_attachments = attachments_result.scalars().all()
+    current_attachments = [
+        {"id": att.id, "filename": att.filename, "content_type": att.content_type}
+        for att in remaining_attachments
+    ]
+    data = {
+        "action": "patch",
+        "user_id": user_id,
+        "chat_id": chat_id,
+        "text": message.text,
+        "time": message.sent_at.isoformat(),
+        "id": message_id,
+        "attachments": current_attachments
+    }
+    await manager.patch_to_chat(chat_id=chat_id, message_data=data)
+
+    return {"ok": True, "uploaded_files": attachment_ids}
 
 
 # class DeleteMessageSchema(BaseModel):

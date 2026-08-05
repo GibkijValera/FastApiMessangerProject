@@ -46,6 +46,17 @@ class ConnectionManager:
                     print("oh")
                     await self.disconnect(user_id)
 
+    async def patch_to_chat(self, chat_id: int, message_data: dict):
+        subscribers = await redis_manager.get_chat_subscribers(chat_id)
+        for subscriber_id_str in subscribers:
+            user_id = int(subscriber_id_str)
+            if user_id in self.active_connections:
+                try:
+                    data = json.dumps(message_data)
+                    await self.active_connections[user_id].send_text(data)
+                except Exception:
+                    await self.disconnect(user_id)
+
     async def get_user_chats_from_db(self, user_id: int, db: AsyncSession) -> list[int]:
         request = select(ChatMember.chat_id).where(ChatMember.user_id == user_id)
         result = await db.execute(request)
