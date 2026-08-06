@@ -386,6 +386,7 @@
 
     <div class="context-menu" id="contextMenu">
         <div class="context-menu-item" id="editMessageBtn">✏️ Редактировать</div>
+        <div class="context-menu-item" id="deleteMessageBtn">🗑️ Удалить</div>
     </div>
 
     <script>
@@ -454,20 +455,78 @@
             };
         }
 
-                function handleIncomingMessage(msg) {
-            if (!msg.id || !msg.user_id || !msg.chat_id) return;
+        function handleIncomingMessage(msg) {
+            if (!msg.id || !msg.chat_id) return;
 
             const chatId = parseInt(msg.chat_id, 10);
-            const isOwnMessage = msg.user_id === currentUserId;
 
-            // Проверяем тип действия (новое сообщение или обновление)
-            if (msg.action === 'patch') {
+            if (msg.action === 'delete') {
+                removeMessageFromUI(msg.id);
+                updateChatPreviewAfterDelete(chatId);
+            } else if (msg.action === 'patch') {
                 updateMessageInUI(msg);
+                updateChatPreview(chatId, msg, msg.user_id === currentUserId);
             } else {
+                const isOwnMessage = msg.user_id === currentUserId;
                 updateChatPreview(chatId, msg, isOwnMessage);
                 if (currentChatId && chatId === currentChatId) {
                     addMessageToUI(msg);
                 }
+            }
+        }
+
+        function removeMessageFromUI(messageId) {
+            const messageEl = document.getElementById(`msg-${messageId}`);
+            if (messageEl) {
+                messageEl.remove();
+            }
+        }
+
+        async function updateChatPreviewAfterDelete(chatId) {
+            try {
+                const response = await fetch(`/chats/${chatId}/messages?limit=1`, { credentials: 'include' });
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.messages && data.messages.length > 0) {
+                        const lastMsg = data.messages[0];
+                        const chatElement = document.querySelector(`.chat-item[data-chat-id="${chatId}"]`);
+                        if (chatElement) {
+                            let previewText = lastMsg.text || '';
+                            if (lastMsg.attachments && lastMsg.attachments.length > 0) {
+                                if (previewText) previewText += ' ';
+                                previewText += `📎 ${lastMsg.attachments.length} влож.`;
+                            }
+                            if (!previewText) previewText = 'Нет текста';
+                            if (previewText.length > 50) previewText = previewText.substring(0, 47) + '...';
+                            const isOwnMessage = lastMsg.user_id === currentUserId;
+                            if (isOwnMessage) previewText = 'Вы: ' + previewText;
+
+                            let timeStr = '';
+                            try {
+                                const dateObj = new Date(lastMsg.sent_at);
+                                if (!isNaN(dateObj.getTime())) {
+                                    timeStr = dateObj.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+                                }
+                            } catch (e) {}
+
+                            const lastMessageEl = chatElement.querySelector('.chat-last-message');
+                            if (lastMessageEl) lastMessageEl.textContent = previewText;
+
+                            const timeEl = chatElement.querySelector('.chat-time');
+                            if (timeEl && timeStr) timeEl.textContent = timeStr;
+                        }
+                    } else {
+                        const chatElement = document.querySelector(`.chat-item[data-chat-id="${chatId}"]`);
+                        if (chatElement) {
+                            const lastMessageEl = chatElement.querySelector('.chat-last-message');
+                            if (lastMessageEl) lastMessageEl.textContent = 'Нет сообщений';
+                            const timeEl = chatElement.querySelector('.chat-time');
+                            if (timeEl) timeEl.textContent = '';
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error('Error updating chat preview after delete:', e);
             }
         }
 
@@ -761,8 +820,6 @@
 
             try {
                 let response;
-
-                // Если режим редактирования - отправляем PATCH запрос
                 if (isEditingMode && editingMessageId) {
                     const formData = new FormData();
                     formData.append('text', text);
@@ -777,7 +834,6 @@
                     });
 
                     if (response.ok) {
-                        // Сбрасываем режим редактирования
                         isEditingMode = false;
                         editingMessageId = null;
 
@@ -793,7 +849,6 @@
                         alert(`❌ Ошибка сохранения: ${errorData.detail || 'Неизвестная ошибка'}`);
                     }
                 } else {
-                    // Обычная отправка нового сообщения
                     const formData = new FormData();
                     formData.append('text', text);
                     for (let i = 0; i < files.length; i++) {
@@ -846,42 +901,33 @@
                 sendMessage();
             }
         });
-
-        // Контекстное меню для редактирования сообщений
         let selectedMessageId = null;
         const contextMenu = document.getElementById('contextMenu');
         const editMessageBtn = document.getElementById('editMessageBtn');
+        const deleteMessageBtn = document.getElementById('deleteMessageBtn');
         let isEditingMode = false;
         let editingMessageId = null;
-
-        // Добавляем обработчик контекстного меню на панель сообщений
         document.getElementById('chatMessages').addEventListener('contextmenu', (e) => {
             const messageEl = e.target.closest('.message');
             if (!messageEl) return;
 
             e.preventDefault();
-
-            // Показываем меню только для своих сообщений
             if (!messageEl.classList.contains('own')) return;
 
             selectedMessageId = messageEl.id.replace('msg-', '');
 
-            // Позиционируем меню: правый угол меню крепится к левой стороне сообщения
             const rect = messageEl.getBoundingClientRect();
-            const menuWidth = contextMenu.offsetWidth || 150; // Примерная ширина меню
+            const menuWidth = contextMenu.offsetWidth || 150;
 
             contextMenu.style.display = 'block';
-            // Левая позиция меню = левая граница сообщения минус ширина меню
             contextMenu.style.left = `${rect.left - menuWidth}px`;
             contextMenu.style.top = `${rect.top}px`;
         });
 
-        // Скрываем контекстное меню при клике в любом месте
         document.addEventListener('click', () => {
             contextMenu.style.display = 'none';
         });
 
-        // Обработчик кнопки редактирования - переключает режим редактирования
         editMessageBtn.addEventListener('click', async () => {
             if (!selectedMessageId || !currentChatId) return;
 
@@ -889,13 +935,9 @@
             if (!messageEl) return;
 
             const currentText = messageEl.childNodes[0]?.textContent?.trim() || '';
-
-            // Помещаем текст в поле ввода
             const textInput = document.getElementById('messageText');
             textInput.value = currentText;
             textInput.focus();
-
-            // Переключаем интерфейс в режим редактирования
             isEditingMode = true;
             editingMessageId = selectedMessageId;
 
@@ -903,6 +945,37 @@
             const sendBtn = document.getElementById('sendBtn');
             inputArea.classList.add('editing');
             sendBtn.textContent = '💾 Сохранить';
+
+            contextMenu.style.display = 'none';
+        });
+
+        // Обработчик кнопки удаления сообщения
+        deleteMessageBtn.addEventListener('click', async () => {
+            if (!selectedMessageId || !currentChatId) return;
+
+            if (!confirm('Вы уверены, что хотите удалить это сообщение?')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/chats/${currentChatId}/messages/${selectedMessageId}`, {
+                    method: 'DELETE',
+                    credentials: 'include'
+                });
+
+                if (response.ok) {
+                    const messageEl = document.getElementById(`msg-${selectedMessageId}`);
+                    if (messageEl) {
+                        messageEl.remove();
+                    }
+                } else {
+                    const errorData = await response.json().catch(() => ({}));
+                    alert(`❌ Ошибка удаления: ${errorData.detail || 'Неизвестная ошибка'}`);
+                }
+            } catch (error) {
+                console.error('Ошибка удаления:', error);
+                alert('❌ Ошибка подключения');
+            }
 
             contextMenu.style.display = 'none';
         });

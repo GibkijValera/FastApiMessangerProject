@@ -143,7 +143,7 @@ async def patch_message(
         "id": message_id,
         "attachments": current_attachments
     }
-    await manager.patch_to_chat(chat_id=chat_id, message_data=data)
+    await manager.send_notify(chat_id=chat_id, message_data=data)
 
     return {"ok": True, "uploaded_files": attachment_ids}
 
@@ -153,18 +153,49 @@ async def patch_message(
 
 
 @messages_router.delete("/{message_id}")
-async def delete_message(message_id: int = Path(ge=1), chat_id: int = Path(ge=1),
-                         user_id: int = Depends(get_current_user),
-                         db: AsyncSession = Depends(get_db)):
-    result = await db.execute(delete(MessageModel).where(MessageModel.chat_id == chat_id,
-                                                         MessageModel.user_id == user_id,
-                                                         MessageModel.id == message_id))
+async def delete_message(
+        message_id: int = Path(ge=1),
+        chat_id: int = Path(ge=1),
+        user_id: int = Depends(get_current_user),
+        db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(
+        delete(MessageModel).where(
+            MessageModel.chat_id == chat_id,
+            MessageModel.user_id == user_id,
+            MessageModel.id == message_id
+        )
+    )
+
     if result.rowcount == 0:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Message not found or you don't have permission"
         )
+
+    result = await db.execute(
+        select(AttachmentModel.filepath).where(AttachmentModel.message_id == message_id)
+    )
+    filepaths = result.scalars().all()
+
+    data = {
+        "action": 'delete',
+        "id": message_id,
+        "chat_id": chat_id
+    }
+
+    await manager.send_notify(chat_id=chat_id, message_data=data)
+
     await db.commit()
+
+    for filepath in filepaths:
+        file_path = PathLib(MEDIA_ROOT) / filepath
+        try:
+            if file_path.is_file():
+                file_path.unlink()
+        except Exception as e:
+            print(f"Error deleting file {filepath}: {e}")
+
     return {"ok": True}
 
 
@@ -333,7 +364,14 @@ async def send_message(
     new_message = MessageModel(user_id=user_id, chat_id=chat_id, text=text)
     db.add(new_message)
     await db.flush()
-    data = {"user_id": user_id, "chat_id": chat_id, "text": text, "time": new_message.sent_at.isoformat(), "id": new_message.id}
+    data = {
+            "action": "send",
+            "user_id": user_id,
+            "chat_id": chat_id,
+            "text": text,
+            "time": new_message.sent_at.isoformat(),
+            "id": new_message.id
+            }
     PathLib("media/attachments").mkdir(parents=True, exist_ok=True)
     attachments = []
     attachment_ids = []
@@ -357,5 +395,5 @@ async def send_message(
         attachment_ids.append(attachment.id)
     data["attachments"] = attachments
     await db.commit()
-    await manager.send_to_chat(chat_id=chat_id, message_data=data)
+    await manager.send_notify(chat_id=chat_id, message_data=data)
     return {"ok": True, "message_id": new_message.id, "uploaded_files": attachment_ids}

@@ -29,24 +29,7 @@ class ConnectionManager:
             chat_id = chat_key.split(":")[1]
             await redis_manager.unsubscribe_user_from_chat(user_id, int(chat_id))
 
-    async def send_to_chat(self, chat_id: int, message_data: dict):
-        subscribers = await redis_manager.get_chat_subscribers(chat_id)
-        print(subscribers)
-        for subscriber_id_str in subscribers:
-            user_id = int(subscriber_id_str)
-            if user_id in self.active_connections:
-                try:
-                    print(user_id)
-                    data = json.dumps(message_data)
-                    print("...")
-                    await self.active_connections[user_id].send_text(
-                        data
-                    )
-                except Exception:
-                    print("oh")
-                    await self.disconnect(user_id)
-
-    async def patch_to_chat(self, chat_id: int, message_data: dict):
+    async def send_notify(self, chat_id: int, message_data: dict):
         subscribers = await redis_manager.get_chat_subscribers(chat_id)
         for subscriber_id_str in subscribers:
             user_id = int(subscriber_id_str)
