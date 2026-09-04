@@ -154,11 +154,11 @@
             .wrapper {
                 padding: 25px;
             }
-            
+
             .login-header span {
                 font-size: 26px;
             }
-            
+
             input, button {
                 padding: 12px 15px;
             }
@@ -170,15 +170,15 @@
         <div class="login-header">
             <span>🔐 Вход</span>
         </div>
-        
+
         <form id="loginForm" onsubmit="return login(event)">
-            <input type="email" id="email" placeholder="📧 Электронная почта" required>
+            <input type="text" id="username" placeholder="👤 Nickname or Email" required minlength="2" maxlength="32">
             <input type="password" id="password" placeholder="🔑 Пароль" required>
             <button type="submit" id="submitBtn">Войти</button>
         </form>
-        
+
         <div id="errorMsg"></div>
-        
+
         <div class="register-link">
             <p>Нет аккаунта?</p>
             <a href="/auth/register">📝 Зарегистрироваться</a>
@@ -188,28 +188,34 @@
     <script>
         async function login(event) {
             event.preventDefault();
-            
-            const email = document.getElementById('email').value.trim();
+
+            const username = document.getElementById('username').value.trim();
             const password = document.getElementById('password').value;
             const errorDiv = document.getElementById('errorMsg');
             const submitBtn = document.getElementById('submitBtn');
-            
+
             errorDiv.style.display = 'none';
-            
-            if (!email || !password) {
+
+            if (!username || !password) {
                 errorDiv.textContent = '❌ Заполните все поля';
                 errorDiv.style.display = 'block';
                 return false;
             }
-            
+
+            if (username.length < 2 || username.length > 32) {
+                errorDiv.textContent = '❌ Имя пользователя должно быть от 2 до 32 символов';
+                errorDiv.style.display = 'block';
+                return false;
+            }
+
             submitBtn.textContent = '⏳ Вход...';
             submitBtn.disabled = true;
             submitBtn.classList.add('loading');
-            
+
             const formData = new URLSearchParams();
-            formData.append('username', email);
+            formData.append('username', username);
             formData.append('password', password);
-            
+
             try {
                 const response = await fetch('/auth/login', {
                     method: 'POST',
@@ -219,7 +225,7 @@
                     body: formData,
                     credentials: 'include'
                 });
-                
+
                 if (response.ok) {
                     const data = await response.json();
                     sessionStorage.setItem('access_token', data.access_token);
@@ -227,7 +233,7 @@
                     window.location.href = '/chats';
                 } else {
                     const error = await response.json();
-                    errorDiv.textContent = '❌ ' + (error.detail || 'Неверный email или пароль');
+                    errorDiv.textContent = '❌ ' + (error.detail || 'Неверный логин или пароль');
                     errorDiv.style.display = 'block';
                     submitBtn.textContent = 'Войти';
                     submitBtn.disabled = false;
@@ -240,7 +246,7 @@
                 submitBtn.disabled = false;
                 submitBtn.classList.remove('loading');
             }
-            
+
             return false;
         }
     </script>

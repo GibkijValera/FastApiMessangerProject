@@ -81,6 +81,7 @@ class UserModel(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(index=True)
     lastname: Mapped[str] = mapped_column(index=True)
+    nickname: Mapped[str] = mapped_column(index=True, default="#")
     hash_pwd: Mapped[str]
     bio: Mapped[str | None]
     email: Mapped[str] = mapped_column(index=True)

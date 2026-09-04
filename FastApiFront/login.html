@@ -96,6 +96,43 @@
             transition: all 0.3s ease;
         }
 
+        .input-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .input-wrapper input {
+            flex: 1;
+        }
+
+        .validation-icon {
+            position: absolute;
+            right: 10px;
+            font-size: 16px;
+            display: none;
+        }
+
+        .validation-icon.loading {
+            display: block;
+            animation: spin 1s linear infinite;
+        }
+
+        .validation-icon.success {
+            display: block;
+            color: #4caf50;
+        }
+
+        .validation-icon.error {
+            display: block;
+            color: #ff6b6b;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
         input, textarea {
             background: #2a2a2a;
             border: 1px solid #3a3a3a;
@@ -133,6 +170,18 @@
 
         button:active {
             transform: translateY(0);
+        }
+
+        button:disabled {
+            background: #666;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        button:disabled:hover {
+            background: #666;
+            transform: none;
+            box-shadow: none;
         }
 
         /* Button group for prev/next */
@@ -197,12 +246,12 @@
             .wrapper {
                 padding: 20px;
             }
-            
+
             .step {
                 padding: 6px 12px;
                 font-size: 11px;
             }
-            
+
             .button-group {
                 flex-direction: column;
                 gap: 8px;
@@ -225,6 +274,10 @@
             <div id="step1" class="step-content active">
                 <input type="text" id="name" placeholder="👤 Имя" required>
                 <input type="text" id="lastname" placeholder="👥 Фамилия" required>
+                <div class="input-wrapper">
+                    <input type="text" id="nickname" placeholder="🆔 Никнейм (2-32 символа)" required minlength="2" maxlength="32">
+                    <span class="validation-icon" id="nicknameIcon"></span>
+                </div>
                 <textarea id="bio" placeholder="📝 О себе (необязательно)"></textarea>
                 <button type="button" onclick="nextStep()">Далее →</button>
             </div>
@@ -256,6 +309,80 @@
         let currentStep = 1;
         let currentEmail = null;
         let server_time = null;
+        let nicknameValid = false;
+        let nicknameTimeout = null;
+
+        // Nickname validation on input
+        document.getElementById('nickname').addEventListener('input', function() {
+            const nickname = this.value.trim();
+            const icon = document.getElementById('nicknameIcon');
+
+            // Clear any existing timeout
+            if (nicknameTimeout) {
+                clearTimeout(nicknameTimeout);
+            }
+
+            // Reset icon state
+            icon.className = 'validation-icon';
+            icon.textContent = '';
+            nicknameValid = false;
+
+            // Only validate if nickname meets minimum length
+            if (nickname.length >= 2) {
+                // Show loading state
+                icon.className = 'validation-icon loading';
+                icon.textContent = '⏳';
+
+                // Wait 500ms after last character typed
+                nicknameTimeout = setTimeout(async function() {
+                    await validateNickname(nickname);
+                }, 500);
+            }
+        });
+
+        async function validateNickname(nickname) {
+            const icon = document.getElementById('nicknameIcon');
+
+            // Check length first
+            if (nickname.length < 2 || nickname.length > 32) {
+                icon.className = 'validation-icon error';
+                icon.textContent = '❌';
+                nicknameValid = false;
+                return false;
+            }
+            try {
+                const response = await fetch('/auth/register/validate_nick', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({nickname: nickname})
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.ok) {
+                    icon.className = 'validation-icon success';
+                    icon.textContent = '✅';
+                    nicknameValid = true;
+                    return true;
+                } else if (response.status === 410) {
+                    // Nickname is already used
+                    icon.className = 'validation-icon error';
+                    icon.textContent = '❌';
+                    nicknameValid = false;
+                    return false;
+                } else {
+                    icon.className = 'validation-icon error';
+                    icon.textContent = '❌';
+                    nicknameValid = false;
+                    return false;
+                }
+            } catch (error) {
+                icon.className = 'validation-icon error';
+                icon.textContent = '❌';
+                nicknameValid = false;
+                return false;
+            }
+        }
 
         async function prevStep() {
             if (currentStep > 1) {
@@ -267,7 +394,7 @@
             }
         }
 
-        async function nextStep() {          
+        async function nextStep() {
             let flag = false;
             if (currentStep === 1) {
                 flag = await validateStep1();
@@ -288,22 +415,31 @@
         async function validateStep1() {
             let name = document.getElementById('name').value.trim();
             let lastname = document.getElementById('lastname').value.trim();
-            
-            if (!name || !lastname) {
-                alert('❌ Введите имя и фамилию');
+            let nickname = document.getElementById('nickname').value.trim();
+
+            if (!name || !lastname || !nickname) {
+                alert('❌ Введите имя, фамилию и никнейм');
                 return false;
             }
             if (name.length < 1 || name.length > 32 || lastname.length < 1 || lastname.length > 32) {
                 alert('❌ Имя и фамилия должны быть от 1 до 32 символов');
                 return false;
             }
+            if (nickname.length < 2 || nickname.length > 32) {
+                alert('❌ Никнейм должен быть от 2 до 32 символов');
+                return false;
+            }
+            if (!nicknameValid) {
+                alert('❌ Никнейм занят или не прошёл валидацию');
+                return false;
+            }
             return true;
         }
-        
+
         async function validateStep2() {
             let pwd = document.getElementById('pwd').value;
             let conf_pwd = document.getElementById('conf_pwd').value;
-            
+
             if (!pwd || !conf_pwd) {
                 alert('❌ Введите и подтвердите пароль');
                 return false;
@@ -333,7 +469,7 @@
                 alert('❌ Введите адрес электронной почты');
                 return false;
             }
-            
+
             const response = await fetch('/auth/register/send_code', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
@@ -356,13 +492,13 @@
                 alert('❌ Введите код подтверждения');
                 return false;
             }
-            
+
             let code = Number(codeInput);
             if (isNaN(code) || code < 0 || code > 99999) {
                 alert('❌ Код должен быть пятизначным числом');
                 return false;
             }
-            
+
             const response = await fetch('/auth/register/check_code', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
@@ -387,12 +523,13 @@
             const userData = {
                 name: document.getElementById('name').value.trim(),
                 lastname: document.getElementById('lastname').value.trim(),
+                nickname: document.getElementById('nickname').value.trim(),
                 bio: document.getElementById('bio').value.trim() || null,
                 pwd: document.getElementById('pwd').value,
                 email: document.getElementById('email').value.trim(),
                 token: tempToken
             };
-            
+
             const response = await fetch('/auth/register/send_data', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
@@ -400,7 +537,19 @@
             });
             const data = await response.json();
             if (!response.ok || !data.ok) {
-                alert('❌ Ошибка регистрации: ' + (data.detail || 'Попробуйте позже'));
+                // If nickname is already used, go back to step 1
+                if (response.status === 410 && data.detail && data.detail.toLowerCase().includes('username')) {
+                    alert('❌ Никнейм уже занят. Пожалуйста, выберите другой.');
+                    document.getElementById(`step${currentStep}`).classList.remove('active');
+                    document.getElementById(`ico${currentStep}`).classList.remove('active');
+                    currentStep = 1;
+                    document.getElementById(`step${currentStep}`).classList.add('active');
+                    document.getElementById(`ico${currentStep}`).classList.add('active');
+                    // Trigger validation for nickname again
+                    document.getElementById('nickname').dispatchEvent(new Event('input'));
+                } else {
+                    alert('❌ Ошибка регистрации: ' + (data.detail || 'Попробуйте позже'));
+                }
                 return false;
             }
             alert('✅ Регистрация успешна! Перенаправление...');

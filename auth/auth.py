@@ -77,12 +77,27 @@ async def check_code(schema: CheckCodeSchema):
 
 class RegisterSchema(BaseModel):
     email: EmailStr
-    name: str = Field(min_length=1, max_length=32)
-    lastname: str = Field(min_length=1, max_length=32)
+    nickname: str = Field(min_length=2, max_length=32)
+    name: str = Field(min_length=1, max_length=16)
+    lastname: str = Field(min_length=1, max_length=16)
     pwd: str = Field(min_length=8, max_length=32)
     bio: None | str = Field(max_length=255)
     token: str
 
+
+class NickSchema(BaseModel):
+    nickname: str = Field(min_length=2, max_length=32)
+
+
+@auth_router.post("/register/validate_nick")
+async def validate(schema: NickSchema, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(UserModel).where(UserModel.nickname == schema.nickname))
+    if result.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail="Username is already used"
+        )
+    return {"ok": True}
 
 @auth_router.post("/register/send_data")
 async def register(schema: RegisterSchema, db: AsyncSession = Depends(get_db)):
@@ -103,6 +118,12 @@ async def register(schema: RegisterSchema, db: AsyncSession = Depends(get_db)):
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email already registered"
         )
+    result = await db.execute(select(UserModel).where(UserModel.nickname == schema.nickname))
+    if result.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail="Username is already used"
+        )
     hashed_pwd = get_password_hash(schema.pwd)
     if schema.bio is None:
         schema.bio = ""
@@ -111,6 +132,7 @@ async def register(schema: RegisterSchema, db: AsyncSession = Depends(get_db)):
         hash_pwd=hashed_pwd,
         name=schema.name,
         lastname=schema.lastname,
+        nickname = schema.nickname,
         bio=schema.bio
     )
     db.add(new_user)
@@ -126,13 +148,15 @@ async def login(response: Response,
 ):
     result = await db.execute(select(UserModel).where(UserModel.email == form_data.username))
     user = result.scalar_one_or_none()
-
     if not user or not verify_password(form_data.password, user.hash_pwd):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        result = await db.execute(select(UserModel).where(UserModel.nickname == form_data.username))
+        user = result.scalar_one_or_none()
+        if not user or not verify_password(form_data.password, user.hash_pwd):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect email or password",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
 
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(

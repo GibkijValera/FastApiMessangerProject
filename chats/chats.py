@@ -8,6 +8,7 @@ from typing import List, Set
 from auth.validation import get_current_user
 from chats.messages.messages import messages_router
 from core.core import templates
+from websocket.ws import manager
 chats_router = APIRouter(prefix="/chats", tags=["chats"])
 chats_router.include_router(messages_router)
 
@@ -50,6 +51,7 @@ async def create_chat(schema: SetChatSchema, owner_id: int = Depends(get_current
             continue
         new_chat_member = ChatMember(user_id=member, chat_id=new_chat.id, role="member")
         db.add(new_chat_member)
+    manager.add_new_chat(schema.members_id, schema.chat_id)
     await db.commit()
     return {"ok": True, "chat_id": new_chat.id}
 
@@ -101,13 +103,11 @@ async def load_all_chats(user_id: int = Depends(get_current_user), db: AsyncSess
         final_chat_name = chat_name_db
         if is_private:
             user_res = await db.execute(
-                select(UserModel.name, UserModel.lastname)
+                select(UserModel.nickname)
                 .join(ChatMember, ChatMember.user_id == UserModel.id)
                 .where(ChatMember.chat_id == chat_id, UserModel.id != user_id)
             )
-            user_row = user_res.first()
-            if user_row:
-                final_chat_name = f"{user_row.name} {user_row.lastname}"
+            final_chat_name = user_res.first().nickname
         last_msg = last_msg_map.get(chat_id)
 
         loaded_chats.append({
