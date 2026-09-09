@@ -133,10 +133,19 @@ async def delete_user_profile(user_id: int = Depends(get_current_user), db: Asyn
 
 
 @users_router.get("/me")
-async def get_me(user_id: int = Depends(get_current_user)):
+async def get_me(user_id: int = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(UserModel).where(UserModel.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     return {
         "ok": True,
-        "user_id": user_id
+        "user_id": user.id,
+        "nickname": user.nickname,
+        "name": user.name,
+        "lastname": user.lastname,
+        "bio": user.bio,
+        "email": user.email
     }
 
 
@@ -154,6 +163,7 @@ async def get_user_profile(user_id: int = Depends(get_current_user), db: AsyncSe
         "id": data.id,
         "name": data.name,
         "lastname": data.lastname,
+
         "bio": data.bio,
         "email": data.email
     }

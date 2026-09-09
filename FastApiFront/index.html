@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Messenger SPA</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #121212;
+            color: #ffffff;
+            height: 100vh;
+            overflow: hidden;
+        }
+        #app-content {
+            height: 100vh;
+            width: 100%;
+            position: relative;
+        }
+        .view-frame {
+            width: 100%;
+            height: 100%;
+            border: none;
+            display: none;
+            background: #121212;
+        }
+        .view-frame.active {
+            display: block;
+        }
+        .slide-panel-wrapper {
+            position: fixed;
+            bottom: 20px;
+            left: 0;
+            z-index: 9999;
+        }
+        .slide-panel-trigger {
+            width: 25px;
+            height: 50px;
+            background: #1e1e1e;
+            border: 1px solid #3a3a3a;
+            border-left: none;
+            border-radius: 0 8px 8px 0;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.3);
+        }
+        .slide-panel-trigger::before {
+            content: '▶';
+            color: #ff8c00;
+            font-size: 10px;
+        }
+        .slide-panel-wrapper:hover .slide-panel-trigger {
+            opacity: 0;
+            pointer-events: none;
+        }
+        .slide-panel {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 60px;
+            height: 25vh;
+            max-height: 200px;
+            background: #1e1e1e;
+            border: 1px solid #3a3a3a;
+            border-left: none;
+            border-radius: 0 8px 8px 0;
+            box-shadow: 2px 0 15px rgba(0, 0, 0, 0.4);
+            transform: translateX(-100%);
+            transition: transform 0.3s ease;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-around;
+            padding: 10px 0;
+        }
+        .slide-panel-wrapper:hover .slide-panel {
+            transform: translateX(0);
+        }
+        .panel-icon {
+            width: 35px;
+            height: 35px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            color: #888;
+            font-size: 22px;
+            transition: all 0.2s ease;
+            border-radius: 8px;
+            text-decoration: none;
+        }
+        .panel-icon:hover {
+            color: #ff8c00;
+            background: rgba(255, 140, 0, 0.1);
+            transform: scale(1.1);
+        }
+        .panel-icon.active {
+            color: #ff8c00;
+            background: rgba(255, 140, 0, 0.2);
+            box-shadow: 0 0 10px rgba(255, 140, 0, 0.2);
+        }
+        .toast-notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #1e1e1e;
+            border-left: 4px solid #ff8c00;
+            padding: 15px 20px;
+            border-radius: 4px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+            z-index: 10000;
+            transform: translateX(200%);
+            transition: transform 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .toast-notification.show {
+            transform: translateX(0);
+        }
+    </style>
+</head>
+<body>
+    <div id="globalToast" class="toast-notification">
+        <span style="font-size: 20px;">🔔</span>
+        <div>
+            <div style="font-weight: bold; font-size: 14px;" id="toastTitle">Новое сообщение</div>
+            <div style="font-size: 12px; color: #aaa;" id="toastBody">...</div>
+        </div>
+    </div>
+    <div id="app-content">
+        <iframe id="frame-chats" src="chats.html" class="view-frame"></iframe>
+        <iframe id="frame-profile" src="profile.html" class="view-frame"></iframe>
+        <iframe id="frame-settings" src="settings.html" class="view-frame"></iframe>
+    </div>
+    <div class="slide-panel-wrapper">
+        <div class="slide-panel-trigger"></div>
+        <div class="slide-panel">
+            <div class="panel-icon active" onclick="switchTab('chats', this)" title="Чаты">💬</div>
+            <div class="panel-icon" onclick="switchTab('profile', this)" title="Профиль">👤</div>
+            <div class="panel-icon" onclick="switchTab('settings', this)" title="Настройки">⚙️</div>
+        </div>
+    </div>
+    <script>
+        let currentUserId = null;
+        let socket = null;
+        let reconnectTimeout = null;
+
+        async function init() {
+            try {
+                const response = await fetch('/users/me', { credentials: 'include' });
+                if (response.status === 401) {
+                    window.location.href = '/auth/login';
+                    return;
+                }
+                const data = await response.json();
+                currentUserId = data.user_id;
+                connectWebSocket();
+                const chatsIcon = document.querySelector('.panel-icon[onclick*="chats"]');
+                if(chatsIcon) switchTab('chats', chatsIcon);
+            } catch (error) {
+                console.error('Init error:', error);
+            }
+        }
+
+        function switchTab(tabName, element) {
+            document.querySelectorAll('.panel-icon').forEach(icon => icon.classList.remove('active'));
+            if(element) element.classList.add('active');
+            document.querySelectorAll('.view-frame').forEach(frame => frame.classList.remove('active'));
+            const activeFrame = document.getElementById(`frame-${tabName}`);
+            if(activeFrame) {
+                activeFrame.classList.add('active');
+            }
+            if(activeFrame && activeFrame.contentWindow) {
+                activeFrame.contentWindow.postMessage({ type: 'TAB_ACTIVATED', tab: tabName }, '*');
+            }
+        }
+
+        function connectWebSocket() {
+            if (reconnectTimeout) clearTimeout(reconnectTimeout);
+            if (socket) socket.close();
+
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws/`;
+
+            socket = new WebSocket(wsUrl);
+
+            socket.onopen = () => console.log("✅ Global WebSocket connected");
+
+            socket.onmessage = (event) => {
+                try {
+                    const msg = JSON.parse(event.data);
+                    handleGlobalMessage(msg);
+                } catch (e) {
+                    console.error('WS Parse Error:', e);
+                }
+            };
+
+            socket.onclose = (event) => {
+                if (event.code === 4001) {
+                    window.location.href = '/auth/login';
+                    return;
+                }
+                reconnectTimeout = setTimeout(connectWebSocket, 3000);
+            };
+        }
+
+        function handleGlobalMessage(msg) {
+            if (!msg.id || !msg.chat_id) return;
+            const isOwnMessage = msg.user_id === currentUserId;
+            if (!isOwnMessage) {
+                showToast(msg);
+                const chatFrame = document.getElementById('frame-chats');
+                if(chatFrame && chatFrame.contentWindow) {
+                    chatFrame.contentWindow.postMessage({ type: 'NEW_MESSAGE', data: msg }, '*');
+                }
+            }
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('globalToast');
+            const title = document.getElementById('toastTitle');
+            const body = document.getElementById('toastBody');
+
+            title.textContent = `Новое сообщение в чате #${msg.chat_id}`;
+            body.textContent = msg.text ? msg.text : '📎 Вложение';
+
+            toast.classList.add('show');
+
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 4000);
+        }
+
+        init();
+    </script>
+</body>
+</html>
